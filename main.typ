@@ -11,6 +11,8 @@
 #set-leading-zero(true)
 #set-theorion-numbering("1.1")
 
+#let ip(x, y) = $lr(angle.l #x, #y angle.r)$
+
 #align(center, strong[meta witch brainrot])
 
 = Differential Privacy
@@ -314,16 +316,98 @@ $ PP[Y = 1] = exp(d/2)/(exp(d/2) + d - 1). $
 
   Then, for every $y in B$
   $
-    PP[Y in B] & = (sum_(y in B) exp(Delta/(2 epsilon) q(y, x)))/
-                 (sum_y' exp(Delta/(2 epsilon) q(y', x)))              \
+    PP[Y in B] & = (sum_(y in B) exp(epsilon/(2 Delta) q(y, x)))/
+                 (sum_y' exp(epsilon/(2 Delta) q(y', x)))        \
                & <= (abs(B) exp(
-                   Delta/(2 epsilon) (q_"max" - ((2 Delta)/epsilon (ln abs(Y) +
+                   epsilon/(2 Delta) (q_"max" - ((2 Delta)/epsilon (ln abs(Y) +
                          t)))
-                 ))/(sum_y' exp(Delta/(2 epsilon) q(y', x)))           \
-               & <= (abs(B) exp ((Delta)/(2 epsilon) q_"max" - ln abs(Y) - t)
-                 )/(abs(Y) exp(Delta/(2 epsilon) q_"max")) <= exp(-t).
+                 ))/(sum_y' exp(epsilon/(2 Delta) q(y', x)))     \
+               & <= (abs(B) exp (epsilon/(2 Delta) q_"max" - ln abs(Y) - t)
+                 )/( exp(epsilon/(2 Delta) q_"max")) <= exp(-t).
+  $
+
+  Then, if $g(t) = 2 Delta/epsilon (ln abs(Y) + t)$ and $Z = q_"max" - q(y, x)
+  >= 0$,
+  $
+    EE[Z] = integral_0^infinity z f_Z (z) dif z = integral_0^infinity
+    integral_0^z f_Z (z) dif t dif z = integral_0^infinity underbrace(
+      integral_t^infinity
+      f_Z (z) dif z, #[$PP[Z >= t]$]
+    ) dif t = integral_0^infinity PP(Z >= z) dif z
+  $
+  Using this:
+  $
+    EE[Z] & = integral_0^infinity PP(q(y, x) <= q_"max" - z) dif z             \
+          & = integral_0^infinity PP(q(y, x) <= q_"max" - g(t)) dif (z = g(t)) \
+          & <= integral_0^infinity exp(-t) g'(t) dif t                         \
+          & = underbrace([-exp(-t) g(t)]_0^infinity, 0) + integral_0^infinity
+            exp(-t) g(t) dif t = EE[g(T)],
+  $
+  where $T tilde "Exp"(1)$.
+
+  Since $g$ is an affine function, we can apply "Jensen's equality":
+  $ EE[g(T)] = g(EE[T]) = g(1) = (2Delta)/epsilon (ln abs(Y) + 1). $
+]
+
+This logarithmic error is much better than the linear error guaranteed by
+Laplace mechanism.
+
+*Noisy-max mechanism*: For each outcome $y in cal(Y)$, sample
+$ z_y prop "Exp"(2Delta/epsilon) $
+#let argmax = math.op("argmax", limits: true)
+and return $ argmax_(y in cal(Y)) (q(y, x) + z_y). $
+This achieves a similar result as the exponential mechanism.
+
+If we replace $"Exp"$ by the Gumbel distribution, we get *the identical result* as
+exponential mechanism.
+
+If we want to take the top-$k$ highest outcomes, you can run exponential
+mechanism $k$ times. By the composition theorem, this is $k epsilon$-DP.
+
+== Binary tree mechanism
+
+Given a dataset $x_1, x_2, ...$ that arrives *sequentially*. We want to make queries:
+$ f_(s, t) (x) = sum_(i = s)^t phi(x_i). $
+Assuming $phi(x_i) <= 1$, if we change $phi(x_i)$ of one user, at most
+$cal(Theta)(n^2)$ queries change, so the amount of Laplace noise we need to add
+is $"Lap"(Theta(n^2)/epsilon)$. The magnitude of noise is quadratic, while
+the query values should grow linearly at most, which is problematic!
+
+Instead, we use a new set of queries: $Q = {f_(2^i j + 1, 2^i (j + 1)): i, j in
+  NN}$. Then,
+$abs(Q) = 2n-1$, and the global sensitivity is only $log_2 n + 1 = Theta(log_2 n)$.
+
+Every original query can be answered by $Theta(log_2 n)$ queries from $Q$. This
+is basically what segment trees in CP do, I'm not elaborating this here.
+
+#theorem(title: "Binary tree mechanism error")[
+  Let $a_(s, t) = f_(s, t) + "Lap"((log_2 n + 1)/epsilon)$ for all $f_(s, t) in
+  Q$.
+  Then, $ EE[max_(s, t) abs(a_(s, t) - f_(s, t))] <=Theta((log n)^3/epsilon). $
+]
+
+#proof[
+  For $(s, t) in I = {(s, t)$ such that $f_(s, t) in Q$, we have:
+  $
+    PP[max_((s, t) in I) abs(a_(s, t) - f_(s, t)) >= (log_2 n + 1)/epsilon
+      (ln(2n-1) + t)] <= exp(-t),
+  $
+  and therefore,
+  $
+    EE[max_((s, t) in I) abs(a_(s, t) - f_(s, t))] <= (log_2 n + 1)/epsilon (ln
+      (2n-1) + 1) = Theta((log n)^2/epsilon).
+  $
+  For every $(s, t)$ (not just in $I$), the error can be accumulated from at
+  most $Theta(log_2 n)$ sub-errors, so
+  $
+    EE[max_(s, t) abs(a_(s, t) - f_(s, t))] <= Theta((log n)^2/epsilon) times
+    Theta(log_2 n) = Theta((log n)^3/epsilon).
   $
 ]
+
+*Problem:* What is $n$? Our data can come infinitely! Alternatively, we can use
+non-uniform error: error on layer $n$ is $epsilon/n^2$, so the sum of
+$epsilon$'es is bounded.
 
 = Principled DL and NLP
 
@@ -337,6 +421,144 @@ $ PP[Y = 1] = exp(d/2)/(exp(d/2) + d - 1). $
 
 GLBM: map input using a predefined non-linear mapping to introduce non-linearity
 into the system. Basis function: polynomials, gaussian, sigmoid.
+
+Given a dataset $D$ with $M$ samples. For different datasets $D$, we learn a
+model $f(x)$, and let the expected prediction $macron(f) = EE_D [f]$.
+
+Consider a noisy setting $y = underbrace(g(x), "real function") +
+underbrace(epsilon, "noise")k($, then the expected error of an unseen sample $x$:
+$
+  & EE_(D, epsilon)[norm(f(x; D) - y)_2^2]             \
+  & = EE_(D, epsilon)[norm(f(x; D)-g(x))_2^2 - underbrace(
+        2 epsilon (f(x; D)-g(x)), #[0, since $EE[epsilon] = 0$]
+      ) + epsilon^2]                                   \
+  & = EE_D [norm(f(x; D)-g(x))_2^2] + sigma_epsilon^2,
+$
+where $sigma_epsilon$ is the error standard deviation (independent of $D$).
+
+The first term is,
+$
+  & EE_(D)[norm(f(x; D)-g(x))_2^2]                                    \
+  & = EE_(D)[norm(f(x; D)-macron(f)(x))_2^2 + norm(
+        macron(f)(x) -
+        g(x)
+      )_2^2 + 2 (f(x; D)-macron(f)(x))(macron(f)(x) - g(x))]          \
+  & = underbrace(EE_(D) [norm(f(x; D)-macron(f)(x))_2^2], "variance") +
+    underbrace(norm(macron(f)(x) - g(x))_2^2, "bias squared") +
+    2(macron(f)(x) - g(x)) underbrace(EE_D [f(x; D)-macron(f)(x)], 0)
+$
+
+This is the bias-variance decomposition.
+
+== Feature maps
+
+Consider ridge regression:
+$ w = (X^T X + lambda I)^(-1) X^T y = X^T (X X^T + lambda I)^(-1) y. $
+Then, if we let $G = X X^T, alpha = (G + lambda I)^(-1) y$,
+$ w = X^T alpha => f(x) = w^T x = alpha^T X x = sum_i alpha_i ip(x_i, x), $
+where $x_i$ are the data points in the training set.
+
+Now, we use the *kernel trick*: to calc $X X^T$ and $ip(x_i, x)$, we only need to
+calculate the inner products between input points, so if we don't want to define
+a basis function for GLBM explicitly, we can skip that and define
+$ K(x, x') = ip(phi(x), phi(x')). $
+
+#theorem(title: "Mercer's theorem")[
+  If $k$ is a SPD kernel:
+  - $k(x, x') = k(x', x)$,
+  - The Gram matrix calculated from $k$ is always PSD for all inputs,
+  then there exists a feature space $HH$ and a feature map such that:
+  $ k(x, x') = phi(x)^T phi(x). $
+]
+
+#example[
+  Consider the RBF kernel in $RR$:
+  $ k(x, x') = exp(-(x-x')^2/(2s^2)), $
+  calculate the Taylor expansion yields
+  $ phi(x) = exp(-x^2/(2s^2)) (1, sqrt(1/(s^2 1!) x), sqrt(1/(s^4 2!) x), ...), $
+  which is infinite-dimensional.
+]
+
+#exercise[
+  Given kernel $k$ with feature map $phi(dot)$ with infinite dimensions. How to
+  find $z(dot)$ with finite dimensions that can approximate $k$.
+]
+
+#solution[
+  Let $w tilde cal(N)_D (0, I)$ be a $D$-dimensional random vector. Consider the
+  mapping:
+  $ h(x) = exp(i w^T x), $
+  then,
+  $
+    EE_w [h(x) h(y)^*] = EE_w [exp(i w^T (x - y))] = integral_(RR^D) p(w) exp(
+      i
+      w^T (x - y)
+    ) dif w = exp(-1/2 norm(x-y)_2^2),
+  $
+  which is the Gaussian kernel.
+
+  #theorem(title: "Bochner's theorem")[
+    A continuous kernel $k(x, y)$ that is translational-invariant: $k(x, y) =
+    k_s (x - y)$ is the Fourier transform of a non-negative measure.
+  ]
+
+  Then,
+  $
+    k(x, y) & = k_s (x - y) = integral p(w) exp(i w^T (x - y)) dif w \
+            & = EE_w [exp(i w^T (x - y))]                            \
+            & approx 1/R sum_(i = 1)^R exp(i w_i^T (x - y))          \
+            & =
+              underbrace(
+                vec(
+                  1/sqrt(R) exp(i w_1^T x),
+                  1/sqrt(R) exp(i w_2^T x),
+                  ...,
+                  1/sqrt(R) exp(i w_n^T x)
+                ), #[$h(x)$]
+              )^T
+              vec(
+                1/sqrt(R) exp(-i w_1^T y),
+                1/sqrt(R) exp(-i w_2^T y),
+                ...,
+                1/sqrt(R) exp(-i w_n^T y)
+              )                                                      \
+            & = h(x) h(y)^*
+  $
+
+  This is not the exact expression we want ($z(x)^T z(y) approx k(x, y)$), so we
+  fine-tune by eliminating the imaginary component:
+  $ z_w (x) = sqrt(2) cos(w^T x + b), w ~ W, b tilde cal(U)[0, tau] $
+  Then,
+  $
+    EE[z_w (x) z_w (y)] = underbrace(EE_w [cos(w^T (x + y) + 2b)], #[0]) + EE_w
+    [cos(w^T (x - y))]
+  $
+  Define $z$ similar to $h$:
+  $
+    z(x) = vec(
+      1/sqrt(R) z_w_1 (x), 1/sqrt(R) z_w_2 (x), ..., 1/sqrt(R) z_w_n
+      (x)
+    ),
+  $
+  then $z(x)^T z(y) approx k(x, y)$.
+
+  An alternative approach is:
+  $ z_w_r (x) = vec(cos(w_r^T x), sin(w_r^T x)). $
+]
+
+== Kernel perspective of neural networks
+
+When the width of a NN increases, the training loss improves, but the weight
+changes less (relatively). So, we can approximate via Taylor's theorem:
+$ f(x, w) approx f(x, w_0) + f'_w (x, w_0) (w - w_0). $
+This is a linear (affine) function wrt $w$.
+
+So MSE optimization of neural networks is simply linear regression. Though $f$
+is not linear for $x$, it is for
+$ phi(x) = f'_w (x, w_0) = nabla_w f (x, w_0)^T. $
+This is called the neural tangent kernel.
+
+// TODO: add the ODE thing here
 
 = Optimal Transport in Large-scale ML/DL
 
@@ -380,9 +602,123 @@ Introducing Deep Learning:
 
 Starting from a Gaussian $X tilde cal(N)$, we find a transform $T$ from $cal(N)$
 to $P$:
-$ min D(T \# cal(N), P) $
+$ min D(T_\# cal(N), P) $
 
 DM: add noises to data to turn it into Gaussian (fwd step), then denoise to turn
 it into generated data.
 
 $D$: KL-divergence, JS-divergence, *optimal transport*.
+
+== Optimal transport formulations
+
+=== General OT
+
+We start with Monge's OT formulation, a problem of finding the minimum mapping
+(in some sense) to transform from a probability distribution to another:
+
+#definition(title: "Monge's OT")[
+  Given two probability measures $mu, nu$ on spaces $X, Y$ and a cost function
+  $c: X times Y -> RR$.
+
+  Find the transform $T: X -> Y$ that minimizes:
+  $ min_(T_\# mu = nu) integral_X c(x, T(x)) dif mu(x). $
+]
+
+Intutively: $T_\# mu$ is the pushforward of measure $mu$. Think of this as a
+way to apply a function to a measure. A result that would shed some light on
+this would be if $mu = delta_x$, then $nu = delta_(T(x))$.
+
+We would focus on the case where $c = norm(dot)_2^2$ is the $cal(l)_2$-norm
+squared.
+
+*Problem*: if the input distribution $mu$ is too simple, then there would exist
+no mapping $T$ such that $nu = T_\# mu$. Assuming $mu = delta_x$, then $nu$ can
+only be something like $delta_y$, so everything would break when $nu = 1/2
+delta_y_1 + 1/2 delta_y_2$.
+
+#definition(title: "Kantorovich's OT")[
+  Given two probability measures $mu, nu$ on spaces $X, Y$ and a cost function
+  $c: X times Y -> RR$.
+
+  Find the *transport plan* $gamma$, a joint probability measure on $X times Y$
+  that minimizes:
+  $ min_(gamma in Pi(mu, nu)) integral_(X times Y) c(x, y) dif gamma(x, y), $
+  where $Pi(mu, nu)$ is the set of all probability measures on $X times Y$ with
+  marginal distribution $mu$ and $nu$.
+] <def:kanto-ot>
+
+This is a relaxation of Monge's OT. Any transform $T$ in Monge's OT can be
+turned into a Kantorovic's OT transport plan defined by:
+$ gamma(x, y) = delta_y (T(x)). $
+
+#example[
+  If $mu = 1/n sum_(i = 0)^n delta_x_i$, $nu = 1/n sum_(i = 0)^n delta_y_i$,
+  then Monge's OT and Kantorovich's OT are equivalent.
+]
+
+Note that $Pi(mu, nu)$ is always non-empty (aside from some trivial cases). And
+if $gamma$ (in discrete case) is represented as a matrix, then the constraints
+are linear constraints on rows and columns of this matrix.
+
+=== Discrete OT formulation
+
+Given $mu = sum_i mu_i delta_x_i, nu = sum_j nu_j delta_y_j$, then $gamma$ can be
+represented as a matrix:
+$ gamma_(i j) = gamma(x_i, y_j). $
+
+Then, the marginal distributions of $gamma$ are:
+$
+  mu_i = mu({x_i}) & = gamma({x_i} times Y) = sum_j gamma(x_i, y_j)  \
+  nu_i = nu({y_j}) & = gamma(X times {y_j}) = sum_i gamma(x_i, y_j).
+$
+
+#example[
+  Solve for the case $n = m = 2$, $mu_1 = nu_1 = mu_2 = nu_2 = 1/2$. We have:
+  $
+    min c = gamma_(1 1) c_(1 1) + gamma_(1 2) c_(1 2) + gamma_(2 1) c_(2 1) +
+    gamma_(2 2) c_(2 2)\
+    "s.t." gamma_(1 1) + gamma_(1 2) = gamma_(2 1) + gamma_(2 2) = gamma_(1 1) +
+    gamma_(2 1) = gamma_(1 2) + gamma_(2 2) = 1/2
+  $
+
+  Our matrix $gamma$ is in the form:
+  $ gamma = 1/2 mat(t, 1 - t; 1 - t, t), $
+  so $c = 1/2 (sum_(i j) c_(i j) + t(c_11+c_22-c_12-c_21)).$
+
+  Clearly, either $t = 0$ (when $c_11+c_22>=c_12+c_21$) or $t = 1$ (otherwise).
+]
+
+#definition(title: "Kantorovich's OT LP formulation")[
+  Given $mu in RR^n, nu in RR^m$. Then the LP formulation of @def:kanto-ot is:
+  $
+    min (mu, nu) = min_(gamma in RR^(n times m)) <C, gamma>\
+    "s.t." gamma >= 0, gamma bold(1)_m = mu, gamma^T bold(1)_n = nu.
+  $
+  The feasible set is called the *transportation polytope*.
+] <def:ot2>
+
+Consider a complete bipartite graph with vertex set $[n] union [m]'$.
+
+#theorem[
+  If $gamma$ is an extremal point of the transportation polytope. Then, $gamma$
+  has at most $m + n - 1$ non-zero entries.
+]
+
+#proof[
+  This is equivalent to the graph above, with edge set $E = {(i, j) gamma_(i j) >
+    0}$. When so, the graph is a tree, which means $abs(E) <= abs([n]) +
+  abs([m]') - 1 = n + m - 1$.
+]
+
+#theorem[
+  The dual form of the problem in @def:ot2 has the following form:
+  $
+    max u^T p + v^T q,\
+    "s.t." u bold(1)_m^T + bold(1)_n v^T <= c.
+  $
+]
+
+The dual problem has only $n + m$ variables, much more simpler to solve than the
+primal problem. Using the network simplex algorithm, this problem can be solved
+in complexity:
+$ cal(O)(max{m, n}^3, log max {m, n}) approx cal(O) (n^3) "when" m = n. $
