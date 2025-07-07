@@ -560,6 +560,94 @@ This is called the neural tangent kernel.
 
 // TODO: add the ODE thing here
 
+== Principled DL
+
+=== Transformers
+
+The transformer takes an *sequence* input of size $N times D$, where each token
+of the sequence is embedded as a $RR^(1 times D)$ vector. The output of one
+layer is:
+$ y = f("Attention"(x) + x), $
+
+Where $"Attention"$ denotes the self-attention operation:
+$
+                   Q & = X W_Q^T                                                               \
+                   K & = X W_K^T                                                               \
+                   V & = X W_V^T                                                               \
+  U = "Attention"(X) & = underbrace("softmax" ((Q K^T) / sqrt(D)), #[$A$: attention matrix])V.
+$
+
+Here, $U$ is the contextual representation of each token in the sequence.
+
+*Problems:*
+- Attention is ad-hoc: there is no theoretical result justifying the
+  effectiveness of attention.
+- Attention is not robust: corrupted training data massively hurts performance.
+- Transformers suffer from oversmoothing: Token representations become identical
+  as the network gets deeper.
+
+*Solution:* We introduce a nonparametric kernel regression framework for
+self-attention.
+
+=== Ellipsoid Attention
+
+We aim to estimate the distribution of input data points.
+
+The most trivial way to do so is to partition the input space $X$ into finitely
+many bins $X_1, X_2, ..., X_n$ and count:
+$ p(x) = n_i/(n Delta_i) "if" x in X_i, $
+where $n_i$ is the number of training data points in $X_i$.
+
+KDE do this with:
+$ p(x) = 1/Delta sum_(j = 1)^m K((x - x_i)/Delta), $
+where $K$ is a kernel.
+
+Now, returning to the setting of attention, consider each pair of key and value
+vector of a token as a data point (with the key being the input, the value being
+the output). Then, we want to calculate the value from the key in a noisy
+setting:
+$ v = f(k) + epsilon, $
+so a natural choice for $f$ would be:
+$ f(k) = EE[v|k] = integral_(RR^d) (v p(v, k))/(p(k)) dif v $
+Substituting the KDE for $p$:
+$
+  f(k) = integral_(RR^d) (v sum_i phi_sigma (v-v_i) phi_sigma (k - k_i))/(sum_i
+  phi_sigma (k - k_i)) dif v = (sum_i phi_sigma (k - k_i)integral_(RR^d) v
+  phi_sigma (v-v_i) dif v)/(sum_i phi_sigma (k - k_i)).
+$
+
+We can recognize $ integral_(RR^d) v phi_sigma (v - v_i) dif v = v_i $
+from the expectation of a normal distribution, so
+$ f(k) = (sum_i v_i phi_sigma (k - k_i))/(sum_i phi_sigma (k - k_i)). $
+Plug in $phi_sigma$:
+$
+  f(k)= (sum_i v_i exp (-norm(k - k_i)_2^2)/(2sigma^2))/(sum_i exp
+  (-norm(k - k_i)_2^2)/(2sigma^2)) =
+  (sum_i v_i exp (-(norm(k)_2^2 + norm(k_i)_2^2))/(2sigma^2) exp (k_i k^T)/(sigma^2))/
+  (sum_i exp (-(norm(k)_2^2 + norm(k_i)_2^2))/(2sigma^2) exp (k_i k^T)/(sigma^2)).
+$
+If we force all $k_i$ to have the same length (via normalizing), this is reduced to:
+$
+  f(k) =
+  (sum_i v_i exp (k_i k^T)/(2sigma^2))/
+  (sum_i exp (k_i k^T)/(2sigma^2)) = sum_i "softmax" (exp (k^T k_i)/sigma^2) v_i.
+$
+This is the formula of self-attention if we plug in $k = q$.
+
+== Linearized Self-attention
+
+== Graph NN
+
+Each graph is characterized by two matrices:
+- $A in RR^(N times N)$: adjacency matrix
+- $X in RR^(N times F)$: feature matrix
+
+Update rule:
+$
+  h_i^((l + 1)) = sigma(h_i^((l)) W_0^((l))) + sum_(j in cal(N)_i) 1/c_(i j)
+  h_j^((l)) W_1^((l)).
+$
+
 = Optimal Transport in Large-scale ML/DL
 
 == Motivation
@@ -722,3 +810,113 @@ The dual problem has only $n + m$ variables, much more simpler to solve than the
 primal problem. Using the network simplex algorithm, this problem can be solved
 in complexity:
 $ cal(O)(max{m, n}^3, log max {m, n}) approx cal(O) (n^3) "when" m = n. $
+There exists a theoretical optimal solution that is about $cal(O)(n^(2.5))$ (or
+lower), but it is not practical.
+
+=== Entropic Regularized OT
+
+#definition(title: "Regularized OT")[
+  The ROT of a transportation plan $gamma$ is defined as:
+  $
+    "ROT"_eta (mu, nu) = min_(gamma ...) underbrace(
+      ip(C, gamma) + eta H(gamma),
+      #[$g(gamma, eta)$]
+    ),
+  $
+  where $H(gamma)$ is a regularization term.
+
+  The entropic regularized OT (EROT) is the special case when $H(gamma) =
+  -sum_(i, j) gamma_(i j) log gamma_(i j) = "KL"(gamma, mu times.circle nu)$,
+  representing the entropy of $gamma$.
+]
+
+Clearly, since $H$ is strongly concave, the objective function in EROT is
+strongly concave, which makes solving for EROT easier, as there is only exactly
+one unique global minimizer.
+
+Now, we consider a general result that holds for a wide range of $H(gamma)$.
+
+#theorem[
+  If the regularization term $H$ is non-negative and continuous,
+  + ROT objective value converges to the OT objective value as $eta -> 0$.
+  + ROT minimizer converges to the OT minimizer as $eta -> 0$.
+]
+
+#proof[
+  Define $gamma(lambda)$ as the minimizer of ROT for $lambda$.
+  + Given $lambda_1 > lambda_2 > 0$, then
+    $
+      g(gamma(lambda_1), lambda_1) >= g(gamma(lambda_1), lambda_2) >=
+      g(gamma(lambda_2), lambda_2),
+    $
+    where the first inequality is due to $H >= 0$, and the second is due to the
+    global minimum property of $lambda_2$.
+
+    Hence, $g(gamma(lambda_k), lambda_k)$ is convergent for every monotonic
+    decreasing $lambda_k$ that converges to $0$. Let the limit be $b$, and
+    assuming that $b > g(gamma(0), 0)$, then there exists some $lambda$ such
+    that $b >= g(gamma(lambda), lambda) > g(gamma(0), 0)$.
+
+    However, $g(gamma(lambda), lambda) >= g(gamma(lambda), 0)$, which means
+    $gamma(0)$ is not a minimizer of the original OT, a contradiction!
+  + TODO
+]
+
+Though every $H$ is well-behaved, only one make the problem easier to solve, and
+that is the entropy function.
+
+Since $gamma_(i j) <= 0$ makes the objective function is $infinity$, we can
+remove the $gamma >= 0$ constraint entirely.
+
+Consider the dual problem:
+$
+  & max_(u in RR^n, v in RR^m) min_(gamma in RR^(n times m)) (ip(C, gamma) + eta
+      H(gamma) + sum_(i = 1)^n u_i (sum_(j = 1)^m gamma_(i j) - mu_i) + sum_(j = 1)^m
+      v_j (sum_(i = 1)^n gamma_(i j) - nu_i) )                    \
+  & = max_(u in RR^n, v in RR^m) (min_(gamma in RR^(n times m)) (
+        sum_(i = 1)^n sum_(j = 1)^m (u_i + v_j + C_(i j) - eta
+          log(gamma_(i j))) gamma_(i j)) - ip(u, mu) - ip(v, nu))
+$
+
+Solving the inner problem:
+$
+  (partial cal(L))/(partial gamma_(i j)) = u_i + v_j + C_(i j) - eta (1 + log
+    gamma_(i j)) = 0 => gamma_(i j) = exp ((eta e^(-1))/(u_i + v_j + C_(i j))).
+$
+
+Substituting back:
+$
+  & = max_(u in RR^n, v in RR^m) (min_(gamma in RR^(n times m)) (
+        sum_(i = 1)^n sum_(j = 1)^m (u_i + v_j + C_(i j) - eta
+          log(gamma_(i j))) gamma_(i j)) - ip(u, mu) - ip(v, nu)) \
+  & = max_(u in RR^n, v in RR^m) underbrace(
+      (-eta sum_(i, j) exp(
+          (u_i + v_j -C_(i
+          j))/lambda - 1
+        ) + u^T mu + v^T nu), #[$f(u, v)$]
+    ) + "constant".
+$
+
+This can be efficiently solved with Sinkhorn's algorithm (block coordinate
+ascent):
++ Initialize $u, v$.
++ Fix $v$, update $u$ such that $(partial f)/(partial u) = 0$.
++ Fix $u$, update $v$ such that $(partial f)/(partial v) = 0$.
++ Return to step 2 until convergence.
+
+#theorem(title: "Dvurechensky et al.")[
+  Using Sinkhorn's algorithm, if the output of step $t$ is $gamma^t$, then:
+  $ ip(gamma^t, C) <= ip(gamma^*, C) + epsilon, $
+  when $t = cal(O) (1/ epsilon^2 norm(C)_infinity^2 log max{m, n})$
+  and $eta = epsilon/(4 log max {m, n})$.
+]
+
+Each step has time complexity $cal(O)(max{m, n}^2)$, so the total time
+complexity is
+$
+  cal(O) ((max{m, n}^2)/ epsilon norm(C)_infinity^2 log max{m, n}) approx
+  cal(O)((max{m, n}^2)/epsilon^2),
+$
+"better" than the naive LP method. Here, we have a trade-off between dataset
+size ($max{m, n}$) and the error ($cal(O)(log 1/epsilon)$ for LP and
+$cal(O)(1/epsilon^2)$ for this approach).
