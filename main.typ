@@ -35,7 +35,9 @@ protected attributes.
 
 *Differential Privacy*: rigorous mathematical formalization of this
 
-== Definitions
+== Differential Privacy
+
+=== Definitions
 
 Denote:
 - $cal(X)$: domain of all possible inputs of a user.
@@ -101,7 +103,7 @@ Clearly, with the example above, private algorithms can be pretty useful.
 In theory, we pick $epsilon approx 0.1$, but in practice, we can let $epsilon
 approx 10 div 20$ (utilitymaxxing).
 
-== Laplace mechanism
+=== Laplace mechanism
 
 Use *noise* to protect sensitive information. If we want $f(x)$, we calculate:
 $ A(x) = f(x) + "error" $
@@ -148,7 +150,7 @@ distribution is centered pretty nicely:
 // #solution[
 // ]
 
-== Basic composition and post-processing
+=== Basic composition and post-processing
 
 Given dataset $x$, we perform multiple analyses on $x$. If each analysis is
 $epsilon$-DP: is the sensitive data safe?
@@ -256,7 +258,7 @@ Consider the dataset $x_1, x_2, ..., x_n in RR^d$, where $x_i in cal(U) = {x:
   This algorithm, by the composition lemma is $2T epsilon$-DP.
 ]
 
-== Exponential mechanism
+=== Exponential mechanism
 
 #example[
   There are $d$ candidates, everyone can vote for any subset of the candidates.
@@ -364,7 +366,7 @@ exponential mechanism.
 If we want to take the top-$k$ highest outcomes, you can run exponential
 mechanism $k$ times. By the composition theorem, this is $k epsilon$-DP.
 
-== Binary tree mechanism
+=== Binary tree mechanism
 
 Given a dataset $x_1, x_2, ...$ that arrives *sequentially*. We want to make queries:
 $ f_(s, t) (x) = sum_(i = s)^t phi(x_i). $
@@ -408,6 +410,387 @@ is basically what segment trees in CP do, I'm not elaborating this here.
 *Problem:* What is $n$? Our data can come infinitely! Alternatively, we can use
 non-uniform error: error on layer $n$ is $epsilon/n^2$, so the sum of
 $epsilon$'es is bounded.
+
+== Approximate Differential Privacy
+
+=== Definitions
+
+Approximate Differential Privacy is a generalization of "pure" Differential
+Privacy, which is defined as follows:
+#definition(title: "Approximate Differential Privacy")[
+  A (stochastic) algorithm $A: cal(X)^* -> cal(Y)$ is $(epsilon, delta)$-DP if
+  for any neighboring datasets $x, x'$ and event $E subset.eq cal(Y)$,
+  $ PP[A(x) in E] <= PP[A(x') in E] exp (epsilon) + delta. $
+
+  Pure differential privacy is the special case when $delta = 0$.
+]
+
+Approximate DP also satisfies basic properties that pure DP do:
+
+#lemma(title: "Post-processing lemma")[
+  The composition of any arbitrary function and an $(epsilon, delta)$-DP
+  algorithm is also $(epsilon, delta)$-DP.
+]
+
+#proof[
+  We have:
+  $ PP[B(A(x)) in S] = integral_R PP[B_d (A(x), r) in S] dif PP_R (r), $
+  where the function $B$ is decomposed into a deterministic form $B_d (dot, r)$.
+  Then, for any neighboring datasets $x$ and $x'$,
+  $
+    PP[B(A(x)) in S] & = integral_R PP[B_d (A(x), r) in S] dif PP_R (r)                       \
+                     & =
+                       integral_R PP[(A(x), r) in B_d^(-1) (S)] dif PP_R (r)                  \
+                     & = integral_R PP[A(x) in [B_d^(-1) (S)]_r] dif PP_R (r)                 \
+                     & <= integral_R (PP[A(x') in [B_d^(-1) (S)]_r] exp(epsilon) + delta) dif PP_R
+                       (r)                                                                    \
+                     & = exp(epsilon) integral_R PP[B_d (A(x'), r) in S] dif PP_R (r) + delta \
+                     & = exp(epsilon) PP[B(A(x')) in S] + delta.
+  $
+  Here, $[E]_r$ denotes the cross section of the set $E$ given the parameter
+  $r$: $E subset.eq cal(Y) times R => [E]_r = {y in cal(Y): (y, r) in E}$.
+]
+
+#lemma(title: "Composition lemma")[
+  Given a stochastic algorithm $A: X^* -> Y_1 times Y_2$, defined as:
+  $ A(x) = (y_1, y_2), y_1 = A_1 (x), y_2 = A_2 (x, y_1), $
+  for $(epsilon_1, delta_1)$-DP $A_1$ and $(epsilon_2, delta_2)$-DP $A_2$. Then,
+  $A$ is $(epsilon_1+epsilon_2, delta_1 + delta_2)$-DP.
+]
+
+#proof[
+  The proof of this is somewhat technical, see Appendix B of The Algorithmic
+  Foundations of Differential Privacy.
+]
+
+#let good = "Good"
+#let bad = "Bad"
+#lemma[
+  Consider two neighboring datasets $x, x'$ and an algorithm $A$.
+  Denote:
+  $
+    good_(x, x') = {y in Y: PP[A(x) = y]/PP[A(x')=y] <= exp epsilon}, bad_(x, x')
+    = Y without good_(x, x').
+  $
+  Then, if $PP[A(x) in bad_(x, x')] <= delta$ then $A$ is $(epsilon, delta)$-DP.
+] <lem:strong-adp>
+
+#proof[
+  For any event $E$,
+  $
+    PP[A(x) in E] & = PP[A(x) in E sect good_(x, x')] + PP[A(x) in E sect bad_(x,
+                      x')]                                                    \
+                  & <= exp (epsilon) PP[A(x') in E sect good_(x, x')] + delta \
+                  & <= exp (epsilon) PP[A(x') in E] + delta.
+  $
+]
+
+=== Examples
+
+#theorem(title: "Truncated Laplace mechanism")[
+  Replace the noise distribution of Laplace mechanism by a Truncated Laplace
+  distribution $"Lap"(lambda, tau)$:
+  $
+    "PDF"_(lambda, tau) (y) prop cases(
+      exp(-abs(y)/lambda) "if" abs(y) <= tau, 0
+      "otherwise"
+    ).
+  $
+  This
+  gives the Truncated Laplace mechanism, which is $(epsilon, delta)$-DP when
+  $tau = cal(O) (log (1/delta))$:
+  $ A(x) = f(x) + Delta/epsilon "Lap"(1, tau). $
+]
+
+#proof[
+  Denote the PDF of the error as $k(x)$, $z_tau = integral_(-tau)^tau
+  exp(-abs(y)) dif y = 2(1-exp(-tau))$ then:
+  $ k(y) = cases(1/z_tau exp(-abs(y)) "if" abs(y) <= tau, 0 "otherwise"). $
+  Let $x, x'$ be neighboring datasets. Let $f: X^* -> RR^d$, and pick $y in
+  RR^d$. Denote $u = f(x), v = f(x')$, $h_x$ as the PDF of $A(x)$, then:
+  $
+    h_x (y) = PP[A(x) = y] = PP["error" = epsilon/Delta (y - f(x))] =
+    k(epsilon/Delta (y - u)),
+  $
+  and
+  $ h_(x') (y) = k(epsilon/Delta (y - v)). $
+
+  If $abs(epsilon/Delta (y - u)) > tau$, then the desired result is trivially
+  true. Assuming otherwise, then:
+  $ h_x (y) = k(epsilon/Delta (y - u)) = 1/z_(tau) exp(-(epsilon)/( Delta) abs(y-u)) $, so there are two cases:
+  - If $abs(epsilon/Delta (y - v)) > tau$, then our desired result holds only
+    when $h_x (y) < delta$. Hence, we need
+    $ delta > 1/z_tau exp(- epsilon/Delta abs(y - u)). $
+    Now, since $abs(y-v) > tau Delta/epsilon$, we must have:
+    $abs(y-u) >= abs(y-v) - abs(u-v) <= Delta (tau/epsilon - 1)$.
+    Hence,
+    $
+      1/z_tau exp(-epsilon/Delta abs(y-u)) <= 1/z_tau exp(
+        -epsilon/Delta dot Delta
+        (tau/epsilon - 1)
+      ) = 1/z_tau exp (epsilon-tau) = exp(epsilon)/(2(exp(tau)-1)).
+    $
+    We need $delta > exp(epsilon)/(2(exp tau - 1)) <=> tau >
+    ln(1+exp(epsilon)/(2 delta))$, true when $tau = cal(O)(log 1/delta)$.
+  - If $abs(epsilon/Delta (y-v)) <= tau$, then
+    $
+      (h_x (y)) / (h_(x') (y)) = (exp(
+        -epsilon/Delta
+        abs(y-u)
+      ))/(exp(-epsilon/Delta abs(y-v))) = exp(
+        epsilon/Delta
+        (abs(y-v)-abs(y-u))
+      ) <= exp(-epsilon/Delta abs(u-v)) = exp(epsilon).
+    $
+    Hence, $h_x (y) <= exp(epsilon) h_(x') (y) <= exp(epsilon) h_(x') (y) +
+    delta$.
+]
+
+#theorem(title: "Gaussian mechanism")[
+  The Gaussian mechanism is:
+  $ A(x) = f(x) + cal(N) (0, (2 Delta^2 ln(2/delta))/epsilon^2) $
+  For $epsilon <= 1$ and $delta > 0$, the Gaussian mechanism is $(epsilon,
+    delta)$-DP.
+]
+
+#proof[
+  We use @lem:strong-adp. Fix two neighboring datasets $x, x'$.
+  $
+    y in bad_(x, x') & <=> ln (f_(A(x)) (y))/(f_(A(x')) (y)) > epsilon,
+  $
+  where
+  $
+    epsilon < ln(f_(A(x)) (y))/(f_(A(x')) (y)) & = ((y-f(x'))^2-(y-f(x))^2)/(2 sigma^2)     \
+                                               & =
+                                                 ((f(x)-f(x'))(2y-f(x)-f(x')))/(2sigma^2)   \
+                                               & <= (Delta (Delta + 2 abs(
+                                                     y -
+                                                     f(x)
+                                                   )))/(4 Delta^2 ln (2/delta) 1/epsilon^2) \
+                                               & = (epsilon^2 (Delta +
+                                                   2abs(y-f(x))))/(4 Delta ln (2/delta)).
+  $
+  Solving for $abs(y-f(x))$ yields,
+  $ abs(y-f(x)) >= (sqrt(2) Delta)/epsilon ln(2/delta). $
+  However, the tail bound of Gaussian implies that:
+  $ PP[abs(y-f(x)) >= (sqrt(2) Delta)/epsilon ln(2/delta)] <= delta, $
+  which implies that $PP[y in bad_(x, x')] <= delta$.
+]
+
+A trivial generalization of this theorem is to multivariate normal error.
+#theorem(title: "Multivariate Gaussian mechanism")[
+  If $f: X^* -> RR^k$, then
+  $ A(x) = f(x) + bold(cal(N))(bold(mu), sigma^2 bold(I)_(k times k)), $
+  with $sigma^2 = (2 Delta_2^2 ln(2/delta))/epsilon^2$ and $bold(mu) = 0$ is
+  $(epsilon, delta)$-DP, where $Delta_2$ is the $cal(l)_2$ sensitivity of $f$:
+  $ Delta_2 = sup_(x, x' "are neighbors") norm(f(x)-f(x'))_2. $
+]
+
+#corollary[
+  The Multivariate Gaussian mechanism gives
+  $
+    EE[max_(j in [k]) abs(f_j (x)-a_j)] <= cal(O) (sqrt(
+        k ln k
+        ln(1/delta)
+      )/epsilon).
+  $
+]
+
+For reference, this bound for the Laplace mechanism is $cal(O)((k ln
+  k)/epsilon)$.
+
+=== Advanced composition
+
+Basic composition theorem states that composing $k$ $(epsilon, delta)$-DP
+algorithms gives us a $(k epsilon, k delta)$-DP algorithm. However, this bound
+can be made tighter (w.r.t. $epsilon$).
+
+#theorem(title: "Advanced composition theorem")[
+  For $epsilon, delta > 0$ and $delta' > 0$, the composition of $k$ mechanisms,
+  each of which is $(epsilon, delta)$-DP, is $(tilde(epsilon), tilde(delta))$-DP,
+  where:
+  $
+    tilde(epsilon) = epsilon sqrt(2k ln(1/delta')) + k epsilon (e^epsilon -
+    1)/(e^epsilon + 1), tilde(delta) = k delta + delta'.
+  $
+]
+
+#example[
+  If we pick $delta' = delta$, then:
+  $ tilde(epsilon) = epsilon sqrt(2k ln(1/delta)) + O(k epsilon^2), $
+  where $(e^epsilon-1)/(e^epsilon+1) approx epsilon / 2$.
+  If we want the final mechanism to have $tilde(epsilon) < 1$, then we pick
+  $epsilon approx 1/(sqrt(k ln (1/delta)))$.
+  Clearly, these results are much stronger than pure DP, at the cost of having
+  an uncertainty amount of $delta$.
+
+  The $delta'$ term serves as a trade-off factor between $tilde(epsilon)$ and
+  $tilde(delta)$.
+]
+
+#proof[
+  Model the privacy loss as a random variable:
+  $ I_(x, x') (y) := ln (PP[A(x) = y])/(PP[A(x') = y]). $
+
+  By @lem:strong-adp, if we can show:
+  $ PP_(y tilde A(x)) [I_(x, x') (y) > epsilon] <= delta, $
+  then $A$ is $(epsilon, delta)$-DP.
+
+  When $A$ is a composition of $A_1, ..., A_k$, which returns a sequence $y =
+  (y_1, y_2, ..., y_k)$:
+  $
+    PP[A(x) = (y_1, ..., y_k)] & = PP[A_1 (x) = y_1] PP[A_2 (x, y_1) = y_2] ...
+                                 PP[A_k (x, y_1, ..., y_(k-1)) = y_k]                        \
+                               & = product_(n = 1)^k PP[A_n (x, y_1, ..., y_(n - 1)) = y_n].
+  $
+  Then,
+  $
+    I_(x, x') (y) = sum_(n = 1)^k underbrace(
+      ln (PP[A_n (x, y_1, ..., y_(n - 1)) =
+        y_n])/(PP[A_n (x', y_1, ..., y_(n - 1)) = y_n]), X_n
+    ).
+  $
+  Each $X_n$ is a random variable which is in the range $[-epsilon, epsilon]$
+  most of the time (except for probability $delta$).
+
+  Intuition:
+  - Since $X_n in [-epsilon, epsilon]$ most of the time, the variance is about
+    $epsilon^2$, so the variance of the sum is about $k epsilon^2$, which gives
+    the $epsilon sqrt(k)$ term in the upper bound.
+  - The mean of $X_n$ is about $epsilon^2$, so the total mean is about $k
+    epsilon^2$, which gives rise to the $k epsilon (e^epsilon - 1)/(e^epsilon^+
+    1)$ term.
+]
+
+Now, we will look at some privacy losses to get some more intuition.
+- Gaussian mechanism: $I_(x, x')(y) tilde cal(N) (Delta_2^2/(2 sigma^2),
+    Delta_2^2/sigma^2)$ ($Delta_2$: $cal(l)_2$ sensitivity, $sigma^2$: variance
+  of the noise), where $sigma = Delta/epsilon sqrt(2 ln (2/delta))$.
+  The expected privacy loss is:
+  $ EE[I_(x, x') (y)] = epsilon^2/(4 ln (2/delta)) approx epsilon^2. $
+- Randomized response:
+  $ y_i = cases(x_i "w.p." e^epsilon/(e^epsilon+1), 1-x_i "otherwise"). $
+  Calculating $I_(x, x')$:
+  - $I_(0, 1) (0) = ln((PP[A(0) = 0])/(PP[A(1)=0])) = epsilon,$
+  - $I_(0, 1) (1) = ln((PP[A(0) = 1])/(PP[A(1)=1])) = -epsilon,$
+  so the expected privacy loss $EE_(y tilde A(0)) [I_(0, 1) (y)] = epsilon
+  e^epsilon/(e^epsilon + 1) - epsilon 1/(e^epsilon + 1) = epsilon (e^epsilon -
+  1)/(e^epsilon + 1) approx epsilon^2.$
+
+#problem[Calculate the expected privacy loss for Laplace mechanism.]
+
+We continue with the proof:
+
+Given $X$ and $Y$ are random variables, then we write:
+$
+  X approx_(epsilon, delta) Y <=> PP[X in E] <= exp(epsilon PP[Y in E]) +
+  delta, forall "event" E.
+$
+
+Then,
+$ A_1 (x) approx_(epsilon, delta) A_1 (x'), ... $
+
+Consider two special RVs $U$ and $V$, we will attempt to prove the theorem for
+these random variables:
+#table(
+  columns: (1fr, 1fr, 1fr),
+  align: center,
+  table.header()[Outcome][$P_u$][$P_v$],
+  [0], $e^epsilon/(e^epsilon+1) (1 - delta)$, $(1-delta)/(e^epsilon+1)$,
+  [1], $(1-delta)/(e^epsilon+1)$, $e^epsilon/(e^epsilon+1) (1 - delta)$,
+  [I am U], $delta$, [0],
+  [I am V], $0$, $delta$,
+)
+
+#lemma(title: "Simulation Lemma")[
+  For any pair of RV $X approx_(epsilon, delta) Y$, there exists a randomized
+  mapping $F$ such that:
+  $ F(U) tilde X, F(V) tilde Y. $
+]
+
+Basically this lemma states that, every pair of $(X, Y)$ is basically $U$ and
+$V$ before a post-processing step. Note that since post-processing preserves
+privacy, this does not change anything at all.
+
+#proof[
+  - If $delta = 0$, then for every outcome $z$, let $p_X (z), p_Y(z)$ be the
+    probability of outputing $z$ for the distributions $X$ and $Y$,
+    respectively.
+
+    Since $F(U) tilde X$, $p_X (z) = PP[F(U) = z] = e^epsilon/(e^epsilon + 1)
+    PP[F(0)=z] + 1/(e^epsilon + 1)PP[F(1)=z].$
+    Similarly,
+    $p_Y (z) = e^epsilon/(e^epsilon+1) PP[F(1) = z] + 1/(e^epsilon+1) PP[F(0) =
+      z].$ Solving for $PP[F(0)=z]$ and $PP[F(1)=z]$ gives the distribution of
+    $F$ given inputs $0$ or $1$:
+    - $PP[F(0)=z] = (e^epsilon p_X (z) - p_Y (z))/(e^epsilon + 1),$
+    - $PP[F(1)=z] = (e^epsilon p_Y (z) - p_X (z))/(e^epsilon + 1).$
+    This satisfies non-negative due to $epsilon$-DP, and the total sum adds up
+    to 1, so this is a probability distribution.
+  - If $delta != 0$, then $PP[F(0)=z]$ and $PP[F(1)=z]$ can be negative for some
+    $z$ (since we don't have $epsilon$-DP). In other words, we need to handle
+    the region $A = {z: p_X (z) > e^epsilon p_Y (z)}$ and $B = {z: p_Y (z) >
+      e^epsilon p_X (z)}$.
+    Then, we can define:
+    - $PP[F(0)=z] = (e^epsilon p_X (z) - p_Y (z))/(e^epsilon + 1),$ if $z in.not
+      A$,
+    - $PP[F(1)=z] = (e^epsilon p_Y (z) - p_X (z))/(e^epsilon + 1),$ if $z in.not
+      B$.
+    - $PP[F("I am U") = z] = ...$
+    - $PP[F("I am V") = z] = ...$
+]
+
+#exercise[
+  $P = "Lap"(1/epsilon), Q = 1 + "Lap"(1/epsilon)$. Give the randomized
+  $F$ such that $F(U) tilde P, F(V) tilde Q$.
+]
+
+Returning to the theorem
+
+#proof[
+  Since $A_n (x, y_1, ..., y_(n - 1)) approx_(epsilon, delta) A_n (x', y_1, ...,
+    y_(n - 1))$, there exists a randomized mapping $F_(y_1, ..., y_(n - 1))$
+  on $U$ and $V$ such that:
+  $
+    F_(y_1, ..., y_(n - 1)) (U) tilde A_n (x, y_1, ..., y_(n - 1)), "and"\
+    F_(y_1, ..., y_(n - 1)) (V) tilde A_n (x', y_1, ..., y_(n - 1)).
+  $
+
+  Then, we can construct a randomized $F^*$ such that:
+  $
+    F^* (U_1, ..., U_k) tilde A(x): U_1, ..., U_k tilde_"i.i.d." U,\
+    F^* (V_1, ..., V_k) tilde A(x'): V_1, ..., V_k tilde_"i.i.d." V.
+  $
+
+  Here is a rough pseudocode version of $F^*$:
+  ```py
+  def F_star(Us):
+    for i in range(1, k + 1):
+      y[i] = F_(y[1], y[2], ..., y[i - 1])(U[i])
+    return y[1], y[2], ..., y[k]
+  ```
+
+  With this, we reduce the problem to the simplest case on $U_1, ..., U_k$ and
+  $V_1, ..., V_k$. Since DP is closed under post-processing, we can skip the
+  existence of $F^*$ entirely.
+
+  We need to prove:
+  $ U = (U_1, ..., U_k) approx_(tilde(epsilon), tilde(delta)) V = (V_1, ..., V_k), $
+  where $tilde(epsilon) = epsilon sqrt(2k ln(1/delta')) + k epsilon (e^epsilon -
+  1)/(e^epsilon + 1), tilde(delta) = k delta + delta'$.
+
+  Let $y$ be the outcome (a $k$-dimensional vector with components either 0, 1,
+  I am U, or I am V).
+  - If $y$ contains bad outcomes (I am U or I am V), then:
+    $ PP[U "has 'I am U'" or V "has 'I am V'"] = 1 - (1 - delta)^k <= delta k. $
+  - Otherwise, $y$ is a bit vector (an element of ${0, 1}^k$):
+    $ ln (p_U (y))/(p_V (y)) = sum_(i = 1)^k ln (p_U_i (y_i))/(p_V_i (y_i)) $
+    If $z_i = 0$, then $ln (p_U_i (y_i))/(p_V_i (y_i)) = epsilon$, otherwise,
+    $ln (p_U_i (y_i))/(p_V_i (y_i)) = -epsilon$. In general, the privacy loss in
+    each step is $epsilon(1-2y_i)$.
+    The total loss is:
+    $ epsilon(k - 2 sum_(i = 1)^n y_i). $
+]
 
 = Principled DL and NLP
 
@@ -779,13 +1162,11 @@ $
 #definition(title: "Kantorovich's OT LP formulation")[
   Given $mu in RR^n, nu in RR^m$. Then the LP formulation of @def:kanto-ot is:
   $
-    min (mu, nu) = min_(gamma in RR^(n times m)) <C, gamma>\
+    min (mu, nu) = min_(gamma in RR^(n times m)) ip(C, gamma)\
     "s.t." gamma >= 0, gamma bold(1)_m = mu, gamma^T bold(1)_n = nu.
   $
   The feasible set is called the *transportation polytope*.
 ] <def:ot2>
-
-Consider a complete bipartite graph with vertex set $[n] union [m]'$.
 
 #theorem[
   If $gamma$ is an extremal point of the transportation polytope. Then, $gamma$
@@ -793,6 +1174,8 @@ Consider a complete bipartite graph with vertex set $[n] union [m]'$.
 ]
 
 #proof[
+  Consider a complete bipartite graph with vertex set $[n] union [m]'$.
+
   This is equivalent to the graph above, with edge set $E = {(i, j) gamma_(i j) >
     0}$. When so, the graph is a tree, which means $abs(E) <= abs([n]) +
   abs([m]') - 1 = n + m - 1$.
@@ -920,3 +1303,63 @@ $
 "better" than the naive LP method. Here, we have a trade-off between dataset
 size ($max{m, n}$) and the error ($cal(O)(log 1/epsilon)$ for LP and
 $cal(O)(1/epsilon^2)$ for this approach).
+
+== Deep Generative Models via OT
+
+Popular choice for divergence in GANs is the Jensen-Shannon divergence:
+$ "JS"(mu, nu) = 1/2("KL"(mu, (mu + nu)/2) + "KL"(nu, (mu + nu)/2)), $
+where $"KL"$ denotes the Kullback-Leibler divergence:
+$ "KL"(mu, nu) = integral_(RR^d) mu(x) log (mu(x)/nu(x)) dif lambda(x). $
+This is problematic when $mu$ or $nu$ have:
+- Disjoint supports.
+- One is continuous while the other is discrete.
+
+Note that $(mu+nu)/2$ denotes the mixture distribution between $mu$ and $nu$,
+not the random variable that represents the average sample taken from $mu$ and
+$nu$.
+
+#example[
+  If $mu = (phi, z)$ where $z tilde cal(U)[0, 1]$ and $nu = (0, cal(U)(0,
+      1))$, then
+  $ "JS"(mu, nu) = cases(log(2) "if" phi != 0, 0 "otherwise"). $
+
+  We can verify this:
+  - If $phi = 0$, then $mu = nu = (mu + nu)/2$, we have:
+    $"JS"(mu, nu) = 2 "KL"(mu, mu) = 0$.
+  - If $phi != 0$, then:
+    $"JS"(mu, nu) = "KL"(mu, (mu + nu)/2) + "KL"(nu, (mu + nu)/2)$.
+    Then, $mu(x, y) = delta(x-phi) bold(1)_[0, 1](y), nu(x, y) = delta(x)
+    bold(1)_[0, 1](y)$.
+    Calculating the first term:
+    $
+      "KL"(mu, (mu + nu)/2) & = integral_(RR^2) mu(x, y) log (mu(x, y))/((mu+nu)/2(x, y))
+                              dif lambda_2 (x, y)                               \
+                            & = integral_(RR) delta(x - phi) log
+                              (2delta(x-phi))/(delta(x-phi)+delta(x)) dif mu(x) \
+                            & = log((2 delta(0))/(delta(0)+ delta(phi)))        \
+                            & = log 2.
+    $
+  Similarly, $"KL"(nu, (mu + nu)/2) = log 2.$ Hence, $"JS"(mu, nu) = log 2$.
+]
+
+Wasserstein metric solves this problem. In the above example, the Wasserstein
+metric is always $abs(phi)$ for every $phi in RR$.
+
+#definition(title: "Wasserstein metric")[
+  The Wasserstein metric between $mu$ and $nu$ is defined as:
+  $
+    W_1 (mu, nu) = inf_(gamma in Gamma(mu, nu)) integral norm(x - y) dif
+    gamma(x, y).
+  $
+]
+
+#theorem(title: "Dual Wasserstein metric")[
+  The Wasserstein metric between $mu$ and $nu$ can be calculated as:
+  $
+    W_1 (mu, nu) = sup_(f in cal(L)^1) (EE_(x tilde mu) [f(x)] - EE_(y tilde nu)
+      [f(y)]),
+  $
+  where $cal(L)^1$ denotes the set of 1-Lipschitz functions: $abs(f(x)-f(y)) <=
+  norm(x-y), forall x, y in RR^d$.
+]
+
