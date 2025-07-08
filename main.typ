@@ -745,7 +745,60 @@ privacy, this does not change anything at all.
   $F$ such that $F(U) tilde P, F(V) tilde Q$.
 ]
 
-Returning to the theorem
+#solution[
+  Denote $f_X$ as the PDF of $X$.
+  Assuming $delta = 0$.
+  The PDF of $F(U)$ is:
+  $
+            epsilon/2 exp(-epsilon abs(x)) = f_F(U) (x) & = f_F(0) (x) f_U (0) + f_F(1)
+                                                          (x) f_U (1) \
+                                                        & = (f_F(0) (x) exp epsilon +
+                                                          f_F(1) (x) )/(exp epsilon +
+                                                          1)          \
+    => epsilon/2 exp(-epsilon abs(x)) (exp epsilon + 1) & = f_F(0) (x) exp epsilon +
+                                                          f_F(1) (x).
+  $
+  The PDF of $F(V)$ is:
+  $
+            epsilon/2 exp(-epsilon abs(x-1)) = f_F(V) (x) & = f_F(0) (x) f_U (0) + f_F(1)
+                                                            (x) f_U (1)             \
+                                                          & = (f_F(0) (x) + f_F(1) (x)
+                                                            exp epsilon )/(exp epsilon
+                                                            + 1).                   \
+    => epsilon/2 exp(-epsilon abs(x-1)) (exp epsilon + 1) & = f_F(0) (x) +
+                                                            f_F(1) (x)exp epsilon .
+  $
+  Solving yields:
+  $
+    mat(exp epsilon, 1; 1, exp epsilon) vec(f_F(0) (x), f_F(1) (x)) =
+    epsilon/2
+    (exp(epsilon)+1)
+    vec(exp(-epsilon abs(x)), exp(-epsilon abs(x-1)))\
+    => vec(f_F(0) (x), f_F(1) (x)) = underbrace(
+      epsilon/(2(exp epsilon - 1)), C
+    ) mat(exp epsilon, -1; -1, exp epsilon) vec(
+      exp(-epsilon abs(x)),
+      exp(-epsilon abs(x-1))
+    ).
+  $
+  Hence,
+  $
+    f_F(0) (x) = C(exp (epsilon - epsilon abs(x)) - exp(-epsilon abs(x - 1)) ),\
+    f_F(1) (x) = C(exp(epsilon - epsilon abs(x - 1)) - exp(-epsilon abs(x))).
+  $
+  Alternatively,
+  $
+    f_F(0) (x) = epsilon/(2(exp epsilon - 1)) dot cases(
+      exp(epsilon (x + 1)) - exp(epsilon (x - 1))
+      "if" x <= 0,
+      exp(epsilon(1-x) - exp(epsilon(x-1))) "if" 0 < x <= 1,
+      0 "otherwise,"
+    )\
+    f_F(1) (x) = f_F(0) (1 - x).
+  $
+]
+
+Returning to the theorem.
 
 #proof[
   Since $A_n (x, y_1, ..., y_(n - 1)) approx_(epsilon, delta) A_n (x', y_1, ...,
@@ -779,18 +832,151 @@ Returning to the theorem
   where $tilde(epsilon) = epsilon sqrt(2k ln(1/delta')) + k epsilon (e^epsilon -
   1)/(e^epsilon + 1), tilde(delta) = k delta + delta'$.
 
-  Let $y$ be the outcome (a $k$-dimensional vector with components either 0, 1,
-  I am U, or I am V).
+  Let $y$ be the outcome of $U$ (a $k$-dimensional vector with components either
+  0, 1, or I am U).
   - If $y$ contains bad outcomes (I am U or I am V), then:
     $ PP[U "has 'I am U'" or V "has 'I am V'"] = 1 - (1 - delta)^k <= delta k. $
+    Denote
   - Otherwise, $y$ is a bit vector (an element of ${0, 1}^k$):
     $ ln (p_U (y))/(p_V (y)) = sum_(i = 1)^k ln (p_U_i (y_i))/(p_V_i (y_i)) $
     If $z_i = 0$, then $ln (p_U_i (y_i))/(p_V_i (y_i)) = epsilon$, otherwise,
     $ln (p_U_i (y_i))/(p_V_i (y_i)) = -epsilon$. In general, the privacy loss in
     each step is $epsilon(1-2y_i)$.
     The total loss is:
-    $ epsilon(k - 2 sum_(i = 1)^n y_i). $
+    $ L = epsilon(k - 2 sum_(i = 1)^n y_i). $
+    Note that $EE[epsilon(1-2y_i)] = epsilon (e^epsilon - 1)/(e^epsilon + 1),$
+    so the expected loss is $k epsilon (e^epsilon - 1)/(e^epsilon + 1)$.
+
+    By Azuma's inequality, we have:
+    $ PP[L > EE[L] + t epsilon sqrt(k)] <= exp(-t^2/2). $
+    Pick $t = sqrt(2 ln (1/delta'))$, then:
+    $ PP[L > EE[L] + epsilon sqrt(2 k ln(1/delta'))] <= ln(1/delta'). $
+
+  Denote $B_1$ as the event $U$ has 'I am U', $B_2$ as the event $L > EE[L] +
+  epsilon sqrt(2 k ln(1/delta'))$, then:
+  $ PP[B_1] <= delta k, PP[B_2] <= delta'. $
+  Hence, when neither $B_1$ nor $B_2$ happens,
+  $
+    ln (p_U (y))/(p_V (y)) = L <= underbrace(
+      EE[L] + epsilon sqrt(
+        2 k
+        ln(1/delta')
+      ), tilde(epsilon)
+    ),
+  $
+  which is true with probability at least $1 - underbrace(
+    (delta k + delta'),
+    tilde(delta)
+  )$.
 ]
+
+=== Sparse vector technique
+
+Given a threshold $T$ in advance and a sequence of $m$ adaptive queries $q_1,
+q_2, ..., q_m$. Each query $q_k$ has sensitivity $1$. We want to report the
+first $c$ queries that have output exceeding the threshold $T$.
+
+#example[
+  Given medical records of $N$ people and diseases $D_1, D_2, ..., D_m$. We want
+  to find the first $c = 3$ diseases affecting more than $T = 100$ people. It
+  could be $D_1, D_2, D_3$, or $D_1, D_2, D_4$, etc.
+]
+
+We first focus on the special case $c = 1$. The sparse vector technique is the
+following algorithm.
+
+```py
+def above_threshold(D: Dataset, Qs: list[Query], T, epsilon):
+  T_hat = T + Lap(2/epsilon)
+  indices = []
+  for i, query in enumerate(Qs):
+    v_i = Lap(4/epsilon)
+    if query(D) + v_i >= T_hat:
+      indices.append(i)
+      break
+  return indices
+```
+
+In DP texts, the output of `above_threshold` is typically a vector $v$ such
+that:
+$ v_i = bold(1)[i in "indices"]. $
+For the general case ($c$ can be greater than 1 but $c << M$),
+this is a *sparse vector*, hence the name.
+
+#theorem[
+  Sparse vector technique (`above_threshold` defined above) is $epsilon$-DP.
+]
+
+#proof[
+  Denote $A(x)$ as `above_threshold(x)`, $L = "Lap"(2/epsilon), E =
+  "Lap"(4/epsilon)$.
+  Consider neighboring datasets $x, x'$ and an outcome $y$.
+  - If $y$ is empty, then:
+    $
+      PP[A(x) = y] & = integral_RR product_(k = 1)^m PP[q_k (x) + v_k < hat(T)] dif
+                     f_hat(T) (hat(T)) \
+                   & = integral_RR dif f_L (L) integral_RR^(m)
+                     product_(k=1)^m PP[q_k (x) + v_k < T + L] dif f_E^(m)
+                     (v_1, ..., v_m)   \
+                   & =
+    $
+  - If $y$ has an index $k$, then conditioning over $v_1, v_2, ..., v_(k-1)$. We
+    have:
+    $
+      PP[A(x) = y] & = PP[and.big_(i = 1)^(k-1) (q_i (x) + v_i < hat(T)) and q_k (x) +
+                       v_k > hat(T)]                                                                                  \
+                   & = PP[hat(T) in (underbrace(
+                           max_(i < k) (q_i (x) + v_i),
+                           g(x)
+                         ), q_k (x) +
+                         v_k]]                                                                                        \
+                   & = integral_RR integral_RR bold(1) [t in (g(x), q_k (x) + v]] f_v_k (v) f_hat(T) (t) dif v dif t.
+    $
+    Change of variables:
+    - $v = v' + g(x) - g(x') + q_k (x') - q_k (x),$
+    - $t = t + g(x) - g(x')$, then:
+    $
+      PP[A(x)=y] = integral_RR integral_RR bold(1) [t' in (g(x'), q'_k (x) +
+          v')]] f_v_k (v) f_hat(T) (t) dif v dif t.
+    $
+    Now, $abs(t - t') = abs(g(x) - g(x')) <= 1$, $abs(v - v') <= abs(
+      g(x)
+      -g(x')
+    ) + abs(q_k (x') - q_k (x)) <= 2$ due to $q_i$ sensitivity being 1.
+
+    Hence, $(f_v_k (v) f_T (t))/(f_v_k (v') f_T (t')) <= exp(epsilon)$, and
+    therefore,
+    $
+      PP[A(x)=y] & <= exp(epsilon) integral_RR integral_RR bold(1) [t' in (g(x'),
+                       q'_k (x) + v')]] f_v_k (v') f_hat(T) (t') dif v dif t \
+                 & = exp(epsilon) PP[A(x) = y'].
+    $
+  - If $y$ is empty, then the proof can proceed similarly (the condition $t in
+    (g(x), q_k (x) + v_k)$ is replaced by $t in (g(x), infinity)$).
+]
+
+#theorem(title: "Accuracy of Sparse vector technique")[
+  Given a dataset $x$. Let $I$ denote the output of `above_threshold` for input
+  $x$. Then, if $alpha = cal(O)((log m + log (2/beta))/epsilon)$, then with
+  probability $1 - c beta$, the following must hold:
+  - For all $i in.not I$, $q_i (x) <= T + alpha$.
+  - If $i in I$, then $q_i (x) >= T - alpha$.
+] <thr:acc-spt>
+
+#proof[
+  We prove the theorem for the $c = 1$ case, since `above_threshold` hasn't been
+  defined for $c != 1$.
+
+  With probability $beta/2$,
+  $ abs(T - hat(T)) <= 2 log(2/beta)/epsilon. $
+  Similarly,
+  $ PP[max_(i in [m]) abs(v_i) >= 4/epsilon (log m + t)] < exp(-t), $
+  then we simply choose $t = log(beta/2)$.
+]
+
+Now, we can finally define `above_threshold` for the $c > 1$ case:
+We simply repeat the algorithm $c$ times.
+The result of @thr:acc-spt can be proven trivially.
 
 = Principled DL and NLP
 
@@ -1363,3 +1549,63 @@ metric is always $abs(phi)$ for every $phi in RR$.
   norm(x-y), forall x, y in RR^d$.
 ]
 
+= Mixture of Experts
+
+Idea: combine multiple simple learners (experts) to form a complex learner.
+
+#definition[
+  Given gating functions $pi_1, pi_2, ..., pi_n$, where $pi_k: RR^d -> [0, 1]$.
+  A mixture of experts (MoE) system with experts $f_1, ..., f_M$, which
+  $f_k: RR^d -> RR^(d')$ is the function $f: RR^d -> RR^(d')$ defined by:
+  $ f(x) = sum_(k=1)^M pi_k (x) f_k (x). $
+]
+
+#example[
+  A simple set of gating functions is the softmax gating functions:
+  $
+    pi_i^"softmax" (x) prop exp(beta_(1 i)^T x + beta_(0 i)) "such that"
+    pi_i^"softmax" "sums to" 1.
+  $
+  Another choice for gating functions is the sigmoid gating functions:
+  $ pi_i^"sigmoid" (x) = 1/(1 + exp(-(beta_(1 i)^T x + beta_(0 i)))). $
+  and its normalized variants:
+  $ pi_i^"n_sigmoid" (x) prop pi_i^"sigmoid" "such that" pi_i^"n_sigmoid" "sums to" 1. $
+  A set of gating functions useful for domain generalization is the cosine
+  gating functions:
+  $
+    pi_i^cos (x) = pi_i^"softmax" ((beta_(1 i)^T x)/(norm(beta_(1 i))norm(x)) +
+      beta_(0 i)).
+  $
+  For medical AI (and multimodal applications),
+  a typical choice is the Laplace gating functions:
+  $ pi_i^"laplace" (x) = pi_i^"softmax" (-norm(b_(1 i) - x) + b_(0 i)). $
+]
+
+The goal of MoE is to scale massive AI models without sacrificing computational
+cost. Popular approaches include:
+- Sparse MoE: only train one expert for each input (the expert with the highest
+  gating weight).
+- Switch Transformer:
+- ...
+
+In learning theory, we are interested in these fundamental questions regarding
+MoE:
+- How good can MoE approximate the ground truth?
+- How well can experts be learned from MoE?
+
+#theorem(title: "Assaf et al., 1998")[
+  We have:
+  $ sup_(f' in cal(L)_p^s) inf_(f in "MoE"_"const") norm(f - f')_2 <= c/M^(s/d), $
+  for some universal constant $c$,
+  $norm(dot)_2$ is taken in a bounded set $I$, and
+
+  $cal(L)_p^s$ denotes the Sobolev space (functions with all $k$-th order
+  derivatives of $f$ is bounded, provided that $1 <= k <= s$),
+
+  $"MoE"_"const"$ is the set of MoE systems generated by constant experts with softmax
+  gates.
+]
+
+As $M -> infinity$, MoE systems can approximate any complex function.
+
+*Question*: What about other gates: sigmoid gates, cosine gates, Laplace gates?
