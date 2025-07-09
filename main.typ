@@ -978,6 +978,182 @@ Now, we can finally define `above_threshold` for the $c > 1$ case:
 We simply repeat the algorithm $c$ times.
 The result of @thr:acc-spt can be proven trivially.
 
+== Private Gradient Descent
+
+Consider the minimization problem:
+$ min_(x in C) f(x), $
+then, Projected GD attempts to solve this problem as follows:
+```py
+def projected_gd(C, f):
+  x = ... # some initial solution
+  xs = []
+  for _ in range(T):
+    x = x - lr * gradient(f) (x)
+    x = project(C, x)
+    xs.append(x)
+  return mean(xs)
+```
+Here, the projection operator `x' = project(C, x)` is defined as solving the
+minimization problem:
+$ min_(x' in C) norm(x'-x). $
+Note that this problem always have a global minimizer when $C$ is convex and
+closed.
+
+A common scenario is when $f$ is the average of the losses of individual data
+points in the dataset:
+$ f(w) = 1/n sum_(i = 1)^n cal(l)_i (w), $
+where $cal(l)_i (w)$ is the loss w.r.t. the $i$-th data point in the dataset.
+
+*Question*: How to make this algorithm private?
+
+Similarly to $epsilon$-DP K-means, we simply add noise to the gradient:
+
+Note that we have:
+$ g = nabla f (w) = 1/n sum_(k = 1)^n cal(l)_i (w), $
+then the $cal(l)_2$-sensitivity of $g$ is $(2 G)/n$, assuming that $norm(
+  nabla
+  cal(l)_i
+) <= G$ at every data point. Hence, we simply add Gaussian noise $cal(N)(0,
+  sigma^2 I)$, where $sigma^2 = (8 G^2 ln(2/delta))/(n^2 epsilon^2).$
+```py
+def private_gd(C, f):
+  x = ... # some initial solution
+  xs = []
+  for _ in range(T):
+    g = gradient(f) (x) + N(0, (8 G^2 ln(2/delta))/(n^2 epsilon^2) * I)
+    x = x - lr * g
+    x = project(C, x)
+    xs.append(x)
+  return mean(xs)
+```
+
+#theorem[
+  Private GD is $(epsilon, delta)$-DP, for
+  $sigma >= Omega((G sqrt(2 T ln(1/delta))/(n epsilon))).$
+]
+
+#proof[
+  Use strong composition theorem, we have:
+  $ sigma = Omega((G sqrt(2 T) ln(1/delta))/(n epsilon)), $
+  By doing composition specifically for Gaussian, we can save a
+  $sqrt(ln(1/delta))$ factor, which gives the desired result.
+]
+
+Now, since regular GD is inefficient, we mainly use SGD and BGD instead. In
+general, if the batch size is $B$, then we simply replace the term $n$ by $B$.
+However, we have this stronger result.
+
+#lemma(title: "Amplification by sampling")[
+  Consider an algorithm $A: X^* -> Y$. Let $S_(m, n): X^n -> X^m$ be the
+  sampling algorithm (without replacement) $m$ of the orignal $n$ inputs.
+
+  Then,
+  if $A$ is $(epsilon, delta)$-DP, then $A compose S_(m, n)$ is $(epsilon',
+    delta')$-DP, where
+  $ epsilon' = ln(1 + (e^epsilon-1)m/n), delta' = delta m/n. $
+]
+Here, $epsilon' < epsilon$ and $delta' < delta$, a much better result than the
+reduction we anticipated!
+
+#proof[
+  Let $x$ and $x'$ be neighboring datasets.
+  Denote $S = S_(m, n), A' = A compose S_(m, n)$, and fix $S$.
+  Then, let $I$ be the set of data point indices sampled by $S$, and $i$ be the
+  index of the data point in which $x$ and $x'$ differs from each other, $y =
+  S(x), y' = S(x')$, then:
+  $
+     PP[A'(x) in E] & = PP[A(S(x)) in E | i in I] PP[i in I] + PP[A(S(x)) in E | i
+                        in.not I] PP[i in I] \
+                    & = PP[A(y) in E | i in I] m/n + PP[A(y) in E | i
+                        in.not I] (1 - m/n). \
+    PP[A'(x') in E] & = PP[A(y') in E | i in I] m/n + PP[A(y') in E | i
+                        in.not I] (1 - m/n). \
+  $
+  Denote $p = PP[A(y) in E | i in I], p' = PP[A(y') in E | i in I], q = PP[A(y)
+    in E | i in.not I] = PP[A(y) in E | i in.not I]$, we have:
+  $
+    PP[A'(x) in E | i in I] <= exp(epsilon) min{PP[A'(x) in E | i
+        in.not I], PP[A'(x') in E | i in I]} + delta.
+  $
+  which implies $p <= exp(epsilon) min{q, p'} + delta$. Similarly $p' <=
+  exp(epsilon) min{q, p} + delta.$
+  Finally, we need:
+  $
+    PP[A'(x) in E] = m/n p + (1-m/n) q <= (1 + m/n (exp epsilon - 1)) p' + delta
+    m/n,
+  $
+  which can be verified easily.
+]
+
+If our total loss is $epsilon$, then each step can have a loss of $epsilon/n$
+and the total number of steps is $approx n^2$ steps.
+
+Finally, let's investigate the utility of projected/private GD.
+
+#theorem[
+  Given $f$ is convex, $G$-Lipschitz (i.e. $norm(nabla f) <= G$ everywhere), $C$ is
+  a convex domain with diameter $R$, then define $x^*$ is the global minimizer
+  of the minimization problem.
+
+  Suppose $g$ in step $k$ satisfies:
+  $ EE[g] = tilde(g), EE[norm(g - tilde(g))_2^2] = sigma^2, $
+  where $tilde(g)$ is the value of `gradient(f)(x)` at that step.
+
+  Define $G' = sqrt(G^2 + sigma^2)$, if the step size `lr` is $eta = R/(G'sqrt(T))$,
+  then $f(hat(w)) - f(w^*) <= (R G')/sqrt(T).$
+]
+
+#proof[
+  *Claim*: At step $t$, $EE[f(w)-f(w^*)] <= (eta norm(tilde(g))^2)/2 + 1/(2 eta) (
+    norm(w - w^*)_2^2 - norm(w' - w^*)_2^2)$, where $w, w'$  denote the value of
+  $w$ at this and the next step, respectively.
+
+  We have:
+  $ f(w) - f(w^*) <= ip(tilde(g), w - w^*) = 1/eta ip(eta tilde(g), w - w^*). $
+  Note that:
+  $
+    2 ip(eta tilde(g), w - w^*) & = EE[2 ip(eta g, w-w^*)]  \
+                                & = norm(eta g)_2^2 + norm(w-w^*)^2_2 -
+                                  norm(eta g + w - w^*)_2^2 \
+                                & = norm(eta g)_2^2 + norm(w-w^*)^2_2
+                                  -EE[norm(w'-w^*)^2_2].
+  $
+  Then,
+  $
+    EE[f(w) - f(w^*)] <= 1/(2 eta) EE[norm(eta g)_2^2 + norm(w-w^*)^2_2
+      -norm(w'-w^*)^2_2].
+  $
+
+  Now, since $hat(w)$ is the centroid of every $w$, we have:
+  $
+    EE[f(hat(w)) - f(w^*)] & <= 1/T sum_w EE[f(w) - f(w^*)]             \
+                           & <= 1/T EE[sum_(g) (eta norm(g)_2^2)/2] + 1/(2 eta T)
+                             (norm(w_0 -w^*)_2^2 - norm(w_T - w^*)_2^2) \
+                           & <= (eta G'^2)/2 + (R^2)/(2 eta T).
+  $
+  Here, we have#footnote[$sum_k$ and $sum_g$ are taken over all steps of the
+    algorithm.]:
+  $
+    EE[norm(g)_2^2] & = EE[norm(tilde(g) + (g - tilde(g)))_2^2] \
+                    & = EE[norm(tilde(g))^2_2 + 2ip(tilde(g), g - tilde(g)) +
+                        norm(g-tilde(g))_2^2]                   \
+                    & = norm(tilde(g))_2^2 + 2ip(tilde(g), EE[g-tilde(g)]) +
+                      sigma^2                                   \
+                    & <= G^2 + sigma^2 = G'^2.
+  $
+  This bound is maximal when,
+  $ S = (eta(G^2 +sigma^2))/2 = (R^2)/(2 eta T), $
+  which implies $eta = R/(G'sqrt(T))$, $2S = R^2/(eta T) = (R G')/sqrt(T)$.
+]
+
+Plugging in stuff gives the following theorem:
+
+#corollary[
+  If $T = (epsilon^2 n^2) / d, eta = (R epsilon n)/(T G sqrt(d ln (1/delta)))$,
+  then DP-PGD with $sigma = (2G sqrt(2T ln(1/delta)))/(n epsilon)$ has:
+  $ EE[f(hat(w))-f(w^*)] <= cal(O) ((R G sqrt(d ln(1/delta)))/(epsilon n)). $
+]
+
 = Principled DL and NLP
 
 == Supervised Learning
@@ -1609,3 +1785,28 @@ MoE:
 As $M -> infinity$, MoE systems can approximate any complex function.
 
 *Question*: What about other gates: sigmoid gates, cosine gates, Laplace gates?
+
+So we know MoE systems can approximate nice functions. Now, we will be focusing
+on training MoE systems. Formally, given data points $(x_k, y_k)_(k in [n])$,
+such that $y_k tilde cal(N)(f^* (x_k), Sigma).$ We want to learn a MoE $f$
+that approximates $f^*$ well.
+
+Denote $f_(beta, eta) (x) = sum_(k=1)^M pi_k (x|beta_k) f_k (x|eta_k).$
+
+Maximum likelihood estimation: we solve for
+$ min_(beta, eta) 1/n sum_(k = 1)^n norm(y_k - f_(beta, eta) (x_k))_2^2. $
+
+In the easy case where $f^*$ can be represented as a MoE system
+with the same number of experts as $f$,
+$ f^* = f_(beta^*, eta^*), $
+then we have the following result:
+$ norm(f_(hat(b), hat(nu)) - f)_2 <= c sqrt(log(n)/n). $
+
+When $pi$ is softmax, then
+$
+  sup_(x) norm(f_(beta, eta) (x) - f_(beta^*, eta^*) (x)) >= c sum_(i=1)^M
+  sum_(j in V_i) (norm(n_j - n_i^*) + norm(beta_(1j) - beta_(1i)^*) +
+  abs(exp(beta_(0j) - exp(beta^*_(0i)))).
+$
+Here, $V_i = {eta: norm(eta - eta^*_i) = min_(j in [M]) norm(eta - eta^*_j) }$.
+
