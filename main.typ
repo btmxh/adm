@@ -1810,3 +1810,52 @@ $
 $
 Here, $V_i = {eta: norm(eta - eta^*_i) = min_(j in [M]) norm(eta - eta^*_j) }$.
 
+== Finetuning and MoE systems
+
+Foundation models contain a lot of knowledge, but they are not trained for
+specific tasks. So, we need to finetune them to adapt to the specific tasks.
+Finetuning is a training process that is much less expesive than training from
+scratch.
+
+An attention layer can be described as:
+#let softmax = math.op("softmax")
+$ T = f_cal(l) ("Attention"(X) + X) = f_cal(l) (softmax((Q K^T) / sqrt(D)) V + X), $
+where $Q, K, V$ are the query, key, and value matrices, defined as:
+$ Q = X W_Q^T, K = X W_K^T, V = X W_V^T, $
+where $W_Q, W_K, W_V$ are the weight matrices of the attention layer.
+
+Finetuning via prefix tuning can be described as: we append a prompt into the
+input in $RR^(N times d)$ to get a $RR^((N + L) times d)$ matrix, then we pass
+that into the transformer. Then, we freeze the transformer and optimize the
+prefix prompt.
+
+Then, there is a funny result:
+#theorem[
+  Each row of self-attention can be represented as a MoE system.
+]
+
+#proof[
+  We adopt the following notation from matrix algebra: $A^i$ as the $i$-th row
+  of $A$, and $A_i$ as the $i$-th column of $A$. For the motivation and
+  properties of writing it down this way, read my funny intro to optimization
+  book.
+
+  We have:
+  $ Q K^T = X W_Q^T W_K X^T $
+  Then, each row of $A = softmax((Q K^T)/sqrt(D)) V$ is:
+  $
+    A^i = underbrace(softmax((Q K^T)/sqrt(D))^i, "gating") underbrace(
+      X W_V^T,
+      "expert"
+    )
+  $
+  Since softmax is row-wise,
+  $ softmax((Q K^T)/sqrt(D))^i = softmax((Q K^T)^i/sqrt(D)) = softmax((Q^i K^T)/sqrt(D)), $
+  which is
+  $ softmax((X^i W_Q^T W_K X^T)/sqrt(D)). $
+  Then, we can see that $A^i$ is equivalent to the MoE with:
+  $
+    pi (X) & = softmax((X^i W_Q^T W_K X^T)/sqrt(D)) && (in RR^(1 times N)), \
+      f(X) & = X W_V^T                              && (in RR^(N times D)).
+  $
+]
