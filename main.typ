@@ -1859,3 +1859,18 @@ Then, there is a funny result:
       f(X) & = X W_V^T                              && (in RR^(N times D)).
   $
 ]
+
+== LoRA finetuning
+
+Since $W_K$, $W_Q$ and $W_V$ are very large matrices, we will finetune those
+using:
+$
+  W_K += B_K A_K, B_K in RR^(m times r), A_K in RR^(r times d),\
+  W_Q += B_Q A_Q, B_Q in RR^(m times r), A_Q in RR^(r times d),\
+  W_V += B_V A_V, B_V in RR^(d times r), A_V in RR^(r times d).
+$
+
+Notable derivatives:
+- DoRA (NVIDIA): $W_K := (W_K B_V A_V)/norm(W_K B_V A_V),$ and similarly...
+- VeRA (Qualcomm): $W_K += B_Q Gamma_(B Q) A_Q Gamma_(A Q)$, where $Gamma_(B
+  Q)$ and $Gamma(A Q)$ are learnable diagonal matrices.
