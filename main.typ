@@ -2020,7 +2020,7 @@ $L$ is 0.
   $ lambda_k = min {x^T L x: x in V_(k - 1)^perp, norm(x)_2 = 1 }, $
   where $V_(k - 1)$ is the basis formed by $b_1, b_2, ..., b_(k-1)$, the first
   $k-1$ eigenvectors of $L$.
-]
+] <thr:variational>
 
 #proof[
   For each $x in V_(k - 1)$, we can represent $x = sum_(i >= k) x^i b_i$, then:
@@ -2171,3 +2171,217 @@ $
   perp x_1$ such that $lambda_2 = R_G (x)$. By the lemma, we have:
   $ phi.alt_G (S) <= sqrt(2 R_G (x)) = sqrt(2 lambda_2). $
 ]
+
+== Spectral sparsification
+
+Since graph matrices grows quadratically with the number of vertices, we want to
+sparsify the graph, i.e., reduce the number of edges while preserving the
+spectral properties of the graph.
+
+For every $S subset.eq V$, denote $bold(1)_S$ as the vector with $bold(1)_S^u =
+chi_S (u)$. Recall that $$.
+
+Here are some motivations for spectral sparsification:
+- *Cut sparsifiers*:
+  Given a graph $G = (V, E)$, we want to find a sparse $H = (V, E')$ such that
+  $ abs(E_G (S, V without S)) approx abs(E_H (S, V without S)), $
+  for every $S subset.eq V$.
+
+  *Benczur-Karger*: gives a multiplicative approximation of the cut sparsifier:
+  $ abs(E_G (S, V without S)) approx abs(E_H (S, V without S)) dot (1 + epsilon), $
+  where $epsilon$ is a small constant with $abs(E_H) = O((n log n)/epsilon^2)$.
+
+  This is equivalent to $(R_G (bold(1)_S))/(R_H (bold(1)_S)) <= 1 + epsilon$.
+- *Learning on graphs*: We have a graph $G = (V, E)$, some vertices in $V$ are
+  labeled, and we want to learn a function $f: V -> RR$ that minimizes,
+  $ sum_({a, b} in E) w_(a, b) (f(a)-f(b))^2, $
+  subjected to the labeled values of $G$.
+
+  Given a cut $S subset.eq V$, recall that $R_G (bold(1)_S) = abs(
+    E_G (S, V
+      without S)
+  ),$ with $bold(1)_S^u = cases(1 "if" u in S, 0 "otherwise")$.
+  This result can be generalized to the *weighted* Laplacian matrix $cal(L)_G^w$,
+  which gives the form of the above minimization problem as $bold(1)_S^T cal(L)_G^w
+  bold(1)_S$.
+
+  Then, *spectral sparsification* (Spielman-Teng) gives us a sparse graph $H$
+  with:
+  $ (x^T cal(L)_H x)/(x^T cal(L)_G x) in [1/(1+epsilon), 1+epsilon], forall x in
+  RR^abs(G), $ (division by zero follows $1/0=infinity, 0/0=0$),
+  which can be used to solved the above problem with a similar
+  guarantees as the original graph $G$. We call $H$ as an
+  $epsilon$-approximation of $G$
+
+Do note that, spectral sparsification is not the same as cut sparsification, but
+rather a generalization of it. In fact, cut sparsification is a special case of
+spectral sparsification, where the inequality only has to hold for binary
+vectors $bold(1)_S$ for every $S subset.eq V$.
+
+*Notation*:
+- Given weighted graph $G = (V, E, w)$, denote $k G$ as the same graph
+  as $G$, but with weights multiplied by $k$.
+- Given weighted graphs $G, H$, we write $G lt.tilde H$ if $cal(L)_H -
+  cal(L)_G$ is positive semidefinite, or equivalently:
+  $ x^T cal(L)_H x >= x^T cal(L)_G x. $
+
+#theorem[
+  $H$ is an $epsilon$-approximation of $G$ if and only if
+  $ 1/(1 + epsilon) G lt.tilde H lt.tilde (1 + epsilon) G, $
+  or equivalently:
+  $
+    cal(L)_H - cal(L)_(G) lt.tilde epsilon cal(L)_G "and" cal(L)_G - cal(L)_H
+    lt.tilde epsilon cal(L)_H,
+  $
+  where $lt.tilde$ denotes the Loewner order (basically $A gt.tilde 0$ if $A$ is
+  positive semidefinite).
+]
+
+Implications of spectral sparsification:
+- Similar boundaries $abs(E (S, S'))$.
+- $cal(L)_H$ and $cal(L)_G$ has similar eigenvalues: $lambda_i (L_H) approx
+  lambda_i (cal(L)_G)$ (by @thr:variational).
+- Solutions of linear equations w.r.t. the Laplacian matrix are similar:
+  $ cal(L)_G x = b, cal(L)_H y = b => x approx y. $
+  More precisely, $norm(x - y)_cal(L)_G <= epsilon norm(x)_cal(L)_G$, where
+  $norm(dot)_cal(L)_G$ is defined as:
+  $ norm(x)_cal(L)_G = sqrt(R_G (x)). $
+- Solutions of the graph learning problems are similar.
+
+#proof[
+  We will prove the third statement. Since $cal(L)_G x = cal(L)_G y$, we have:
+  $ (cal(L)_H - cal(L)_G) y = cal(L)_G x - cal(L)_G y = cal(L)_G (x - y). $
+  Then,
+  $ (x-y)^T cal(L)_G (x - y) <= $
+]
+
+Now, we will give a method to construct spectral sparsifiers via *random
+sampling*.
+
+If $H$ is a random graph such that $EE [cal(L)_H] = cal(L)_G$, then matrix
+concentation gives us that $H$ is an $epsilon$-approximation of $G$ with high
+probability $1 - alpha$.
+
+Then, we can construct $H$ as follows:
+- Assign a probability $p_e$ to each edge $e in E$ (we'll do this later)
+- Pick edges in $E$ with the probability assigned above. If included, then
+  set the weight to be $w_e/p_e$.
+
+We have:
+$ cal(L)_G = sum_(e in E) w_e L_e = sum_({a, b} in E) w_{a, b} v_(a, b) v_(a, b)^T, $
+where $v_(a, b) = delta_a - delta_b$.
+Then,
+$
+  cal(L)_H = sum_({a, b} in E(H)) w_{a, b}/p_{a, b} (v_(a, b) v_(a, b)^T) => EE[cal(L)_H] = sum_(e in
+  E) p_{a, b} dot w_{a, b}/p_{a, b} (v_(a, b) v_(a, b)^T) = cal(L)_G.
+$
+
+Now, we let $p_e = 1/r w_e v^T_(a, b) cal(L)_G^(-1) v_(a, b)$ where $e = {a, b}$,
+here, $cal(L)_G^(-1)$ denotes the pseudoinverse of $cal(L)_G$.
+
+We have the following lemma
+
+#lemma[
+  If $G$ is connected, then
+  $ sum w_e v^T_(a, b) cal(L)_G^(-1) v_(a, b) = n - 1. $
+]
+
+#proof[
+  For simplicity, assuming $w_(a, b) = 1$, then we have:
+  $ v_(a, b)^T cal(L)_G^(-1) v_(a, b) = PP[{a, b} in T(G)], $
+  where $T(G)$ is an uniform spanning tree of $G$.
+  Then,
+  $
+    sum_({a, b} in E) v_(a, b)^T cal(L)_G^(-1) v_(a, b) = sum_({a, b} in E) PP[{a,
+        b} in T(G)] = n - 1,
+  $
+  hence the desired result.
+
+  For the general case, we have:
+  $
+    sum_({a, b} in E) w_(a, b) v_(a, b)^T cal(L)_G^(-1) v_(a, b)
+    &= sum_({a, b} in E) w_(a, b) tr(v_(a, b)^T cal(L)_G^(-1) v_(a, b))\
+    &= sum_({a, b} in E) w_(a, b) tr(cal(L)_G^(-1) v_(a, b) v_(a, b)^T)\
+    &= tr(
+      cal(L)_G^(-1) underbrace(
+        sum_({a, b} in E) w_(a, b) v_(a, b) v_(a,
+        b)^T, cal(L)_G
+      )
+    )\
+    &= tr(cal(L)^(-1)_G cal(L)_G) = n.
+  $
+  But because pseudoinverse bs, it is actually $n - 1$, not $n$.
+]
+
+We want $p_e in [0, 1], forall e in E$ and $EE[e(H)]$ to be small. Calculating
+the latter:
+$ EE[e(H)] = 1/r sum_(e in E) PP[e in E(H)] = 1/r sum_(e in E) p_e = (n - 1)/r. $
+
+We set $r = (c epsilon^2)/(log n)$. Then, apply the following lemma,
+
+#lemma(title: "Chernoff's inequality")[
+  Let $X_1, ..., X_n$ be independent random variables with $0 <= X_i <= 1$,
+  and $X = sum_(k = 1)^n X_k, mu = EE[X]$. Then,
+  $ PP[abs(X-mu) >=delta mu] <= 2 exp(-(delta^2 mu)/3), forall delta in (0, 1/3). $
+]
+
+we have $EE[e(H)]$ is concentrated around its mean, i.e. $(n-1)/r = cal(O)((n
+  log n)/epsilon^2)$.
+
+Finally, we need that: with high probability, $cal(L)_H$ is an
+$epsilon$-approximation of $cal(L)_G$. To prove this, we need the matrix
+concentration inequality:
+
+#lemma(title: "Matrix concentration inequality")[
+  Let $X_1, ..., X_n$ be positive semi-definite matrices, and $X = sum_(k=1)^n
+  X_k$ so that $norm(X_k) <= M$ almost surely. Then,
+  if $lambda_min, lambda_max$ are the min and max eigenvalues of $X$,
+  $mu_min, mu_max$ are the min and max eigenvalues of $EE[X]$,
+  $
+    PP[lambda_min (X) <= (1 - epsilon) mu_min] <= n
+    (e^(-epsilon)/(1-epsilon)^(1-epsilon))^(mu_min / M),\
+    PP[lambda_max (X) <= (1 + epsilon) mu_max] <= n
+    (e^(epsilon)/(1+epsilon)^(1+epsilon))^(mu_max / M).
+  $
+]
+
+WLOG assuming $EE[X] = I$, so $mu_min = mu_max = 1$. Now, for every PD matrices
+$A, B$, such that:
+$ A lt.tilde (1 + epsilon) B => B^(-1/2) A B^(-1/2) lt.tilde (1 + epsilon) I. $
+This applies to our Laplacian matrices, so we want to prove:
+$
+  1/(1+epsilon) <= lambda_min (cal(L)_G^(-1/2)cal(L)_H cal(L)_G^(-1/2))<= lambda_max (underbrace(cal(L)_G^(-1/2) cal(L)_(H) cal(L)_G^(-1/2), Pi)) <= 1 +
+  epsilon.
+$
+
+Clearly, since $EE[cal(L)_H] = EE[cal(L)_G]$, the matrix $Pi$ has mean $I$.
+Then, we can apply the lemma with each $X_e = cal(L)_G^(-1/2) w_e/p_e eta_e
+v_(a, b) v_(a, b)^T cal(L)_G^(-1/2)$ for each $e = {a, b} in E(G)$, where
+$eta_e$ is a Bernoulli random variable with $p = p_e$.
+
+Then, the probability of $PP[lambda_max (Pi) >= 1 + epsilon]$ is at most
+$ n exp(-epsilon^2/(3 r)) = n^(-1), $
+given $c <= 1/6.$
+
+Similarly, we can derive the probability of $PP[lambda_min (Pi) <= 1/(1 +
+  epsilon)]$ is at most $n^(-1)$. This can be combined to give the desired
+result.
+
+== Appendix: Pseudoinverses
+
+Given a symmetric, positive semidefinite matrix $A$, we can do spectral
+decomposition on it:
+$ A = Q Lambda Q^T, "where" Q^T = Q^(-1). $
+Then, we can define the pseudoinverse of $Lambda$ as:
+$ (Lambda^(-1))_i^i = cases(0 "if" Lambda_i^i = 0, 1/Lambda_i^i "otherwise"). $
+Then, we can define:
+$ A^(-1) = (Q^T)^(-1) Lambda^(-1) Q^(-1) = Q Lambda^(-1) Q^T. $
+
+This explains why above,
+$ tr(cal(L)_G^(-1) cal(L)_G) = n - 1. $
+Here, $cal(L)_G^(-1) cal(L)_G = Q Lambda^(-1) Lambda Q^T$. The product of the
+two lambda does not gives $I$, but rather some $I$ with one 1 replaced by 0,
+as the trace is $tr(Q Lambda^(-1) Lambda Q^T) = tr(
+  Lambda Q^T Q
+  Lambda^(-1)
+) = tr(Lambda Lambda^(-1))$.
