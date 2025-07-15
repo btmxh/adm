@@ -1873,4 +1873,301 @@ $
 Notable derivatives:
 - DoRA (NVIDIA): $W_K := (W_K B_V A_V)/norm(W_K B_V A_V),$ and similarly...
 - VeRA (Qualcomm): $W_K += B_Q Gamma_(B Q) A_Q Gamma_(A Q)$, where $Gamma_(B
-  Q)$ and $Gamma(A Q)$ are learnable diagonal matrices.
+  Q)$ and $Gamma_(A Q)$ are learnable diagonal matrices.
+
+= Spectral Graph Theory
+
+Main idea: Represent graphs as matrices, then study the eigenvalues and
+eigenvectors of these matrices.
+
+*Notation*: For a given index tuple $I = (i_1, ..., i_n)$, for a matrix $A in
+RR^(r times c)$ denote
+$
+  A_I & = mat(A_i_1, ..., A_i_n)     & in RR^(r times n) & "as" A "with columns" i_1, ...,
+                                                           i_n, \
+  A^I & = mat(A^(i_1); ...; A^(i_n)) & in RR^(n times c) & "as" A "with rows" i_1, ...,
+                                                           i_n.
+$
+
+When $I = (i)$ contains only one index, we can write it as $A_i$ or $A^i$.
+
+Then, we have this elegant result.
+#theorem[
+  For any two matrices $A, B$ such that the product $A B$ makes sense, we have:
+  $ (A B)^I_J = A^I B_J. $
+]
+
+If we write the row index before the matrix, then we have:
+$ attach((A B), tl: I, br: J) = attach(A, tl: I) B_J, $
+which kinds of makes more sense, but it looks somewhat unnatural, so we won't
+use them here.
+
+The standard basis of $RR^n$ is denoted as $delta_i$, for $i in [n]$.
+
+== Graphs
+
+#definition(title: "(Symmetric) graph")[
+  A graph $G$ is a pair $(V, E)$, where $V$ is the set of vertices and $E
+  subset.eq {{u, v}: u, v in V}$ is the set of edges.
+]
+
+For convenience, we define getters: $V(G)$ as the vertex set of $G$,  $E(G)$ as
+the edge set of $G$.
+
+Some notations:
+- $abs(G) = abs(V(G))$ as the number of vertices.
+- $e(G) = abs(E(G))$ as the number of edges.
+- Two vertices $u, v$ are *adjacent* if ${u, v} in E(G)$.
+- The *degree* of a vertex $v$ is the number of edges incident to $v$:
+  $deg_G (v) = abs({v in V(G): {u, v} in E(G)})$. This can also be denoted as
+  $deg(v)$ if $G$ is not ambigious.
+
+Then, we can represent a graph as an adjacency matrix $a$: given a bijection $I$
+from $V(G)$ to $[abs(G)]$ (an indexing of the vertices), we have:
+$
+  A = A(G) = (a_(I(u), I(v)))_(u, v in V(G)), "where" a_(I(u), I(v)) = chi_E(G)
+  ({u, v}).
+$
+
+For convenience, we will treat graph vertices as integers in $[abs(G)]$.
+
+#let diag = math.op("diag")
+#definition(title: "Laplacian matrix")[
+  The Laplacian matrix of a graph $G$ is defined as:
+  $ L(G) = D(G) - A(G), $
+  where $D(G) = diag(d)$, $d_(u) = deg(u)$.
+
+  In other words,
+  $
+    L(G)_u^v = L(G)^v_u = cases(
+      deg(u) "if" u = v,
+      -1 "if" u != v "and" {u, v} in E,
+      0 "otherwise"
+    ).
+  $
+]
+
+We have the following trivial results.
+#theorem[
+  - Entries within a column/row of $L(G)$ sums to 0.
+  - If $L_e$ denotes the Laplacian matrix of a graph $G$ with only edge $e$, then
+    $L(G) = sum_(e in E) L_e$.
+]
+
+Now, consider some vector $x in RR^abs(G)$. We have:
+$
+  (L x)^(u) = sum_(e in E) L_e^u x = sum_(e in E, e = {u, v}) (x^u - x^v).
+$
+
+== Eigenvalues and eigenvectors of Laplacian matrices
+
+For a vector $x in RR^abs(G)$, we have
+$ L_{u, v} x = (x^u - x^v) delta_u + (x^v - x^u) delta_v, $
+which implies
+$
+  x^T L_{u, v} x & = sum_(i) (x^T)_i ((x^u - x^v) delta_u + (x^v - x^u)
+                     delta_v)^i                    \
+                 & = sum_i ((x^i) (x^u - x^v) delta^i_(u) + (x^i) (x^v - x^u)
+                     delta^j_(u))                  \
+                 & = x^u (x^u-x^v) + x^v (x^v-x^u) \
+                 & = (x^u - x^v)^2.
+$
+By linearity, we have:
+$ x^T L x = x^T sum_({u, v} in E) x = sum_({u, v} in E(G)) (x^u-x^v)^2 >= 0. $
+
+Since $L$ is a real symmetric matrix, all its eigenvalues are real. Moreover, there
+is an orthonormal basis of $RR^abs(G)$ consisting of eigenvectors of $L$.
+
+Denote the eigenvalues of $L$ as $lambda_1, lambda_2, ..., lambda_n$ and the
+corresponding basis eigenvectors be $v_1, v_2, ..., v_n != 0$, where $n =
+abs(G)$.
+
+Then,
+$ v_i^T L v_i = lambda_i norm(v_i)_2^2 >= 0, $
+which implies $lambda_i >= 0$. Hence, all eigenvalues of $L$ are non-negative.
+
+Moreover, from
+$ L x = sum_(e in E, e = {u, v}) (x^u - x^v), $
+we know that if $x^u = vec(1, ..., 1)$, $L x = 0$, so the smallest eigenvalue of
+$L$ is 0.
+
+#theorem[
+  The multiplicity of the eigenvalue 0 of $L$ is equal to the number of
+  connected components of $G$.
+]
+
+#proof[
+  If $G$ can be split to $m$ connected components, then we can write $L$ as a
+  diagonal-block matrix like so:
+  $ L = mat(L_1, 0, ..., 0; 0, L_2, ..., 0; 0, 0, ..., L_m), $
+  so our argument above applies for $x$ in the form of:
+  $ x^k = sum_(i in V(G_k)) bold(e)_i, $
+  where $G_k$ denotes the $k$-th connected component of $G$.
+  There are $m$ such vectors, which are linearly independent, so the
+  multiplicity of 0 is at least $m$.
+
+  Now, if $x$ is an eigenvector of $L$ with eigenvalue 0, then
+  $ x^T L x = sum_({u, v} in E) (x^u - x^v)^2 = 0. $
+  This implies $x^u = x^v$ if ${u, v} in E$, and more generally when $u$ and
+  $v$ are connected. Hence, $x$ must be a linear combination of the vectors
+  $x^k$ defined above. Hence, $x^k$ is the basis of the eigenspace of eigenvalue
+  0.
+]
+
+#theorem[
+  If $0 = lambda_1 <= lambda_2 <= ... <= lambda_n$ are the eigenvalues of $L$,
+  then each $lambda_k$ can be recursively defined via
+  $ lambda_k = min {x^T L x: x in V_(k - 1)^perp, norm(x)_2 = 1 }, $
+  where $V_(k - 1)$ is the basis formed by $b_1, b_2, ..., b_(k-1)$, the first
+  $k-1$ eigenvectors of $L$.
+]
+
+#proof[
+  For each $x in V_(k - 1)$, we can represent $x = sum_(i >= k) x^i b_i$, then:
+  $
+    x^T L x & = (sum_(i>=k) x^i b_i)^T (sum_(j>=k) x^j lambda_j b_j)             \
+            & = sum_(i, j >= k) x^i x^j lambda_j b_i^T b_j                       \
+            & = sum_(i>=k) lambda_i (x^i)^2                                      \
+            & = sum_(i>=k) (lambda_i - lambda_k) (x^i)^2 + lambda_k norm(x)_2^2,
+  $
+
+  Clearly, if $norm(x)_2 = 1$, then this sum is minimized when:
+  $ sum_(i>=k) (lambda_i - lambda_k) (x^i)^2 = 0, $
+  which can happen when $x^i = delta^i_(k)$. Then, and $x^T L x = lambda_k$.
+
+]
+
+== Spectral clustering
+
+Consider a graph $G = (V, E)$ with $abs(G) = n$. Our aim is to find *clusters*
+within $G$.
+
+#let vol = math.op("vol")
+#definition[
+  Let $G = (V, E)$ be a graph.
+
+  The *volume* of a set $S subset.eq V$ is the sum of all degrees of vertices in
+  $S$: $ vol S = sum_(v in S) deg(v). $
+
+  The *conductance* of a set $S subset.eq V$ is defined as:
+  $
+    phi.alt_G (S) = abs(E(S, V without S))/min{vol S, vol (V without S)},
+  $
+  where $E(X, Y) = {{x, y} in E: x in X, y in Y}$.
+]
+
+The idea is that clusters are subsets $S subset.eq V$ with low conductance.
+
+Define
+$ phi.alt_G = min_(diameter != S subset.neq V) phi.alt_G (S). $
+
+If $G$ is connected, then $phi.alt_G > 0$. Otherwise, we can take $S$ to be
+the set of vertices in one connected component, then $phi.alt_G = 0$.
+
+Let's consider the case where $G$ is $d$-regular: $deg v = d, forall v in V$.
+Then, consider the following:
+$ cal(L) = 1/d L = I - 1/d A, $
+
+Then,
+$
+  phi_G (S) = abs(E(S, V without S))/min{vol S, vol (V without S)} = abs(
+    E(S, V
+      without S)
+  )/(d min{abs(S), abs(V without S)})\
+  => phi_G = min_(diameter != S subset.neq V) abs(E(S, V without S))/(d
+  min{abs(S), abs(V without S) }) = min_(diameter != S subset.neq V, 0 < abs(S)
+  <= n/2) abs(E(S, V without S))/(d abs(S)).
+$
+
+#lemma[
+  Every eigenvalues $lambda_i$ of $L(G)$ is in $[0, 2]$.
+]
+
+#proof[
+  See Gershgorin circle theorem.
+]
+
+#lemma(title: "Discrete Cheeger Inequality")[
+  $lambda_2/2 <= phi_G <= sqrt(2 lambda_2)$.
+]
+
+#proof[
+  *Lower bound*:
+  Note that $lambda_2$ (of $L$) is:
+  $ lambda_2 = min{x^T L x: x perp x_1, norm(x) = 1}, $
+  where $x_1$ is the first eigenvector of $L$, which is the constant vector
+  $mat(1, ..., 1)^T.$
+  This can be rewitten as:
+  $ lambda_2 = min {(x^T cal(L) x)/norm(x)_2^2, x perp mat(1, ..., 1)^T}. $
+
+  Letting $x^u = chi_S (u) + t$, then:
+  $
+    x^T cal(L) x = 1/d sum_({u, v} in E) (x^u - x^v)^2 = 1/d abs(
+      E(S, V without
+        S)
+    ),
+  $
+  where $t$ is a normalizing constant to make $x perp b_1 = mat(1, ..., 1)^T$.
+  Now, we find $t$:
+  $
+    b_1^T x = sum_i x^i = sum_i (chi_S (i) + t)
+    = abs(S) + n t => t = -abs(S)/n.
+  $
+
+  Then, we have:
+  $
+    norm(x)_2^2 & = sum_i (x^i)^2                                 \
+                & = sum_(u in S) (1 + t)^2 + sum_(u in.not S) t^2 \
+                & = n t^2 + 2t abs(S) + abs(S)                    \
+                & = abs(S)^2/n - 2 abs(S)^2/n + abs(S)            \
+                & = abs(S) - abs(S)^2/n.
+  $
+  Considering subsets $S subset.eq V$ with $abs(S) <= n/2$, we have:
+  $ norm(x)^2_2 >= abs(S) - 1/2 abs(S) = abs(S)/2. $
+  Hence,
+  $ (x^T cal(L) x)/norm(x)_2^2 <= 2 dot abs(E(S, V without S))/(d abs(S)), $
+  so
+  $
+    lambda_2 = min{(x^T cal(L) x)/norm(x)_2^2: x perp b_1 } <= 2 min_(
+    S subset.neq V, 0 < abs(S) <= n/2) dot abs(E(S, V without S))/(d abs(S)) =
+    2 phi.alt_G.
+  $
+  Hence, $phi.alt_G >= lambda_2 / 2$.
+
+  *Upper bound*: We aim to construct $S$ with $phi_G (S) <= sqrt(2 lambda_2)$
+  via an algorithm:
+  - Fix $x in RR^abs(V),$ sort the vertices such that $x_v_1 <= ... <= x_v_n$.
+    This gives us $n - 1$ different cuts $({v_1}, {v_2, ..., v_n}), ({v_1, v_2},
+      {v_3, ..., v_n}), ..., ({v_1, ..., v_(n-1)}, {v_n})$.
+  - Output the cut with the smallest conductance.
+
+  #lemma[
+    If $y perp b_1$, then the algorithm above output a vertex set $S$ with at
+    most:
+    $ phi_G (S) <= (sum_({u, v} in E) abs(y^u - y^v))/(d sum_u y^u), $
+  ]
+
+  #proof[
+
+  ]
+
+  Now, the only work remaining is to pick some $y$ such that:
+  $
+    R_G (x) = (x^T cal(L) x)/norm(x)_2^2 = 1/(d norm(x)_2^2) sum_({u, v}
+    in E(G)) (x^u-x^v)^2
+  $
+  satisfies
+  $ sqrt(2 R_G (x)) >= (sum_({u, v} in E) abs(y^u - y^v))/(d sum_u y^u) $
+  and $y perp b_1$.
+
+  This is equivalent to:
+  $
+    (sum_({u, v} in E) (x^u - x^v)^2)/(d norm(x)_2^2) >= ((sum_({u, v} in E)
+      abs(y^u - y^v))/(d sum_u y^u))^2,
+  $
+  which holds when $y^u = (x^u)^2$ by the Cauchy-Schwarz inequality.
+
+  We have $lambda_2 = min {R_G (x): x perp x_1}$. Then, we simply pick $x
+  perp x_1$ such that $lambda_2 = R_G (x)$. By the lemma, we have:
+  $ phi.alt_G (S) <= sqrt(2 R_G (x)) = sqrt(2 lambda_2). $
+]
