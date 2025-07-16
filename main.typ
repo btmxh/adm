@@ -2367,6 +2367,108 @@ Similarly, we can derive the probability of $PP[lambda_min (Pi) <= 1/(1 +
   epsilon)]$ is at most $n^(-1)$. This can be combined to give the desired
 result.
 
+== Random walks and local clustering algorithms
+
+=== Random walks (RWs)
+
+Let $G = (V, E, w)$ be a weighted graph. A random walk (RW) on $G$ is a
+stochastic process that starts at a vertex $v_0 in V$ and at each step, moves to
+a neighbor vertex $v_1 in V$ with probability proportional to the weight of
+the edge connecting $v_0$ and $v_1$.
+
+Now, denote $p_t$ as the probability distribution of the RW at time $t$, i.e.,
+$p(t)^v = PP["at" v "at time" t].$ We fix the starting node to make this
+well-defined.
+
+Then, we have:
+$
+  p(t)^v = sum_({u, v} in E) p(t)^u w_{u, v}/(d^w (u)) = sum_(u in V)
+  p(t)^u w_{u, v}/(d^w (u)),
+$
+where $d^w$ denotes the weighted degree of $v$:
+$ d^w (u) = sum_({u, v} in E) w_{u, v}, $
+and if ${u, v} in.not E$, we set $w_{u, v} = 0$.
+
+Writing this in matrix form (consider each $p_t$ as a vector):
+$ p^v_(t + 1) = sum_(u in V) underbrace(w_{u, v}/(d^w (u)), W^v_u) p^u_(t). $
+So if we let $W$ be the random walk matrix:
+$ W^v_u = w_{u, v}/(d^w (u)), $
+then $p_(t + 1) = W p_(t)$.
+
+Alternatively, if $M$ is the weighed adjacency matrix of $G$, $D$ is the
+diagonal weighted degree matrix, then we can write:
+$ W = M D^(-1), $
+where $D^(-1)$ is the pseudoinverse of $D$.
+
+In Lazy Random Walks,
+the walk can stay at the same vertex with some probability $p_"stay" =
+1/2$.
+
+Then, this turns the lazy random walk matrix $W$ into:
+$ tilde(W) = p_"stay" I + (1 - p_"stay") M D^(-1), $
+where $I$ is the identity matrix.
+
+Now, we are interested in the eigenvalues and eigenvectors of $W$, but since $W$
+is not symmetric, we cannot use the spectral decomposition directly. However, if
+we let:
+$ A = D^(-1/2) W D^(1/2) = D^(-1/2) M D^(-1/2), $
+the normalized adjacency matrix of $G$, then $A$ is symmetric, so it has real
+eigenvalues.
+
+If $psi$ is a eigenvector of $A$ with eigenvalue $lambda$, then:
+$
+  A psi = lambda psi <=> D^(-1/2) W D^(1/2) psi = lambda psi <=> W (D^(1/2) psi)
+  = lambda D^(1/2) psi,
+$
+so $lambda$ is also an eigenvalue of $W$. Hence, $A$ and $W$ has the same
+spectra.
+
+Now, note that if $d$ is the weighted degree vector, then:
+$ W d = M underbrace(D^(-1) d, bold(1)) = d. $
+
+By the Perron-Frobenius theorem, all eigenvalues of $tilde(W)$ are bounded in
+$[0, 1]$. But we know $1$ is one eigenvalue, so we can denote all eigenvalues of
+$tilde(W)$ by: $1 = omega_1 >= omega_2 >= ... >= omega_n >= 0$.
+
+Denote $pi = 1/(bold(1)^T d) d$ as the normalized weighted degree vector, then
+we have this following result.
+
+#theorem[
+  If the LRW starts at a node $a in V$ of a weighted graph $G = (V, E, w)$, then
+  $ abs(p(t+1)^b - pi^b) <= sqrt((d(b))/(d(a))) omega_2^t, forall a in V. $
+]
+
+#proof[
+  We have:
+  $
+    p(t) & = tilde(W)^t p(0)                                          \
+         & = D^(1/2) (D^(-1/2) (p_"stay" I + (1-p_"stay")
+               W) D^(1/2))^t D^(-1/2) p(0)                            \
+         & = D^(1/2) (p_"stay" I + (1 - p_"stay") A)^t D^(-1/2) p(0).
+  $
+
+  Now, take $psi_1, ..., psi_n$ as eigenvectors of $A$ that forms an orthonormal
+  basis, then:
+  $ D^(-1/2) p(0) = sum_i underbrace((D^(-1/2) p(0))^i, c^i) psi_i $
+  and
+  $
+    D^(1/2) (p_"stay" I + (1 - p_"stay") A)^t D^(-1/2) p(0) & = D^(1/2) sum_i c_i
+                                                              (p_"stay" I + (1 - p_"stay") A)^t psi_i                   \
+                                                            & = D^(1/2) sum_i c_i omega_i^t psi_i.                      \
+                                                            & = D^(1/2) (c_1 psi_1 + sum_(i >= 2) c_i omega_i^t psi_i).
+  $
+  Since $psi_k$ are orthonormal, we have:
+  $ c_i = psi_i^T D^(-1/2) p(0), forall i in ZZ^+. $
+  Taking $i = 1$ gives,
+  $ c_1 = psi_1 D^(-1/2) p(0). $
+  Here, $psi_1 parallel d^w$, but sicne $norm(psi_1) = 1$, we must have:
+  $ psi_1 = d^w/norm(d^w) . $
+  Note that $D^(1/2) c_1 psi_1 = pi$, so we simply have to bound the second
+  term:
+  $ norm(D^(1/2) sum_(i >= 2) c_i omega_i^t psi_i)^2. $
+  We know:
+]
+
 == Appendix: Pseudoinverses
 
 Given a symmetric, positive semidefinite matrix $A$, we can do spectral
