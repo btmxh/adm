@@ -2487,3 +2487,418 @@ as the trace is $tr(Q Lambda^(-1) Lambda Q^T) = tr(
   Lambda Q^T Q
   Lambda^(-1)
 ) = tr(Lambda Lambda^(-1))$.
+
+= Fine-grained Algorithms and Complexity
+
+== Introduction
+
+#definition(title: "SAT")[
+  A SAT problem is defined with binary variables $(x_1, x_2, ..., x_n) in {0,
+    1}^n$ and a logic statement $L$ in conjunctive normal form (CNF) with $m$
+  clauses:
+  $ L = C_1 and C_2 and ... and C_m, $
+  where each clause $C_i$ is a disjunction of literals,
+  $
+    C_i = x_i_1 or x_i_2 or ... or x_i_k or
+    overline(x_i_{-1}) or overline(x_i_{-2}) or ... or overline(x_j_{-l}),
+  $
+]
+
+SAT is "the" hardest NP problem, meaning that if we can solve SAT in polynomial
+time, then we can solve all NP problems in polynomial time.
+
+However, even reducing SAT to something $cal(O)(2^((1-delta)n))$ is already
+hard. The SETH (Strongly Exponential Time Hypothesis) conjecture states that
+there is no algorithm that solves SAT in $cal(O)(2^((1-delta)n))$ for any
+$delta > 0$.
+
+#definition(title: "Orthogonal Vectors problem variants")[
+  *S-OV*: Given $S subset.eq {0, 1}^d$ where $d = cal(O)(log n), n = abs(S))$.
+  Find $u, v in S$ such that $u^T v = 0$.
+
+  *(A,B)-OV*: Given $A, B subset.eq {0, 1}^d$ where $d = cal(O)(log n), n =
+  abs(A) = abs(B)$. Find $u in A, v in B$ such that $u^T v = 0$. Here, we force
+  $A$ and $B$ to be different sets.
+]
+
+Both variants OV can trivially be solved in $cal(O)(n^2 d)$ time. Here, we
+ignore the term $d$ (since it is only $log n$). We are interested in improving
+this runtime complexity to something like $n^(2-epsilon)$. It turns out that if
+we can find an algorithm that solves S-OV in $n^(2-epsilon)$ time, then we can
+also solve (A,B)-OV in $n^(2-epsilon)$ time, and vice versa.
+
+#theorem(title: "Equivalence of two OV formulations")[
+  The two OV formulations are equivalent, i.e.
+  - If S-OV can be solved in $n^(2-epsilon)$ time, then (A,B)-OV can also be
+  solved in $n^(2-epsilon)$ time.
+  - If (A,B)-OV can be solved in $n^(2-epsilon)$ time, then S-OV can also be
+    solved in $n^(2-epsilon) log n$ time.
+]
+
+#proof[
+  - Define:
+    $ tilde(A) = {vec(a, 1, 0): a in A}, tilde(B) = vec(b, 0, 1): b in B} $
+    Then, two vectors $tilde(u) in tilde(A), tilde(v) in tilde(B)$ are
+    orthogonal if:
+    $ tilde(u)^T tilde(v) = 0 <=> u^T v = 0 and (u, v "are in different sets"). $
+    Hence, we can run the S-OV algorithm on $S = tilde(A) union tilde(B)$ to
+    solve the (A,B)-OV problem.
+  - Index elements in $S$ using indices $0, 1, ..., n - 1$. Denote $S[i]$ as the
+    element in $S$ with index $i$.
+    Define:
+    $
+      S^k_1 = {S[i]: "bit" k "of" i "in binary is" 1}\
+      S^k_2 = {S[i]: "bit" k "of" i "in binary is" 0},
+    $
+    then we run (A,B)-OV $log n$ times on each pair of $(S^k_1, S^k_2)$. If any
+    invocation yields a solution then we are done, otherwise there must be no
+    orthogonal vectors in $S$, since if two elements of $S$ have different
+    indices, they must belong to different sets $S^k_1$ and $S^k_2$ for some $k$.
+
+    A more simple algorithm utilizes randomization: we randomly divides $S$ into
+    two equal sets $k$ times, then run (A,B)-OV on each pair of sets. If any
+    invocation yields a solution then we are done, otherwise there is a chance
+    of $1-1/2^k$ that there is no orthogonal pair in $S$.
+]
+
+#theorem(title: "Relationship between SAT and (A,B)-OV")[
+  If (A,B)-OV can be solved in $n^(2-epsilon)$ time, then SAT can also be
+  solved in $2^((1-delta)n)$ time.
+]
+
+#proof[
+  Divide the terminal set into $S_1, S_2$ with equal size.
+
+  For each clause $C_i$, it can be written as disjunction (or) of $C_i^1, C_i^2$,
+  where $C_i^j$ only contains variables n $S_j, forall j in {1, 2}$.
+
+  Then, for each assignment $a_1 in {0, 1}^(n/2), a_2 in {0, 1}^(n/2)$,
+  construct vectors
+  $
+    v(a_1)^i = cases(0 "if" a_1 "satisfies" C_i^1, 1 "otherwise"),\
+    w(a_2)^i =cases(0 "if" a_2 "satisfies" C_i^2, 1 "otherwise").
+  $
+
+  Then, two vectors $v(a_1)$ and $w(a_2)$ are orthogonal if and only if
+  $a_1$ satisfies $C_i^1$ or $a_2$ satisfies $C_i^2$, or equivalently, $(a_1,
+    a_2)$ satisfies $C_i$.
+
+  The time complexity of running OV with $A = v({0,1}^(n/2)), B=w({0,1}^(n/2))$
+  is:
+  $
+    cal(O)(abs(A)^(2-epsilon)) = cal(O)(2^(n/2 (2-epsilon))) =
+    cal(O)(2^(n(1-epsilon/2))),
+  $
+  so $delta = epsilon/2$ (for small $epsilon$).
+]
+
+Now, we turn our attention to another problem.
+
+#definition(title: "Graph diameter problem")[
+  The graph diameter problem is to find the maximum distance between any two
+  vertices on a graph $G = (V, E)$:
+  $ max_(u, v in V) d_G (u, v). $
+]
+
+A (not-so) trivial algorithm for this problem is to do BFS on every node to find
+the maximum distance. This has complexity $cal(O)(n^2)$, where $n = abs(V)$.
+
+It turns out that solving graph diameter problem in $n^(2-epsilon)$ time allows
+one to solve (A,B)-OV in $n^(2-epsilon)$ time.
+
+#theorem[
+  If graph diameter can be solved in $n^(2-epsilon)$ time, then (A,B)-OV can
+  also be solved in $n^(2-epsilon)$ time.
+]
+
+#proof[
+  If $A, B subset.eq {0, 1}^d$, then consider $G = (V, E)$ with:
+  $
+    V = A union.sq B union.sq [d] union.sq {alpha, beta, gamma},\
+    E = {{a, k}: a_k = 1 and, a in A, k in [d]} union {{b, k}: b_k = 1, b in B,
+      k in [d]} \ union {{a, alpha}, {b, beta}, {k, gamma}: a in A, b in B, k in
+      [d]}.
+  $
+
+  Then,
+  - The distance between $a, a' in A$ (or $b, b' in B$, $k, k' in [d]$) is
+    always 2.
+  - If the distance between $a in A$ and $b in B$ is at least 3, then it means
+    there is no $k in [d]$ such that ${a, k}, {b, k} in E$. This means $a_k = 0$
+    or $b_k = 0$ for every $k in [d]$, i.e. $a$ and $b$ are orthogonal.
+
+  With this, we run graph diameter algorithm on $G$ to find the maximum
+  distance.
+  If the diameter is 2 then no orthogonal pair exists, otherwise, there is at
+  least one orthogonal pair in $A$ and $B$.
+
+  *Question:* How to convert from existence to which pair is orthogonal?
+]
+
+So we have all those problems with no solutions (under the SETH). Here is a
+solution for a problem that is much better than the naive case:
+
+Consider an array of integers $S$. Find a subarray (no contiguous constraint)
+of $S$ that has sum of elements equal to $0$.
+
+Idea: Meet-in-the-middle: divide $S$ into two halves, then iterate subsets and
+record subset sums. Then, use a sorting scheme/hashmap to find pairs of
+subsets that sum to $0$. Complexity: $cal(O)(2^n)$ (naive case) to
+$cal(O)(2^(n/2))$. See https://wiki.vnoi.info/algo/basic/meet-in-the-middle.md
+for more details.
+
+= High-dimensional Probability and Applications
+
+== Concentration of sums of random variables
+
+We know: if $Z tilde cal(N)(0, 1)$, then:
+$ PP[abs(Y) <= t] = integral_(-t)^t 1/sqrt(2pi) e^(-x^2/2) dif x. $
+We aim to bound this via a more closed-form expression.
+
+First, substitute $x = t + y$ after changing the bounds a bit:
+$
+  PP[Y > t] & = integral_(0)^infinity 1/sqrt(2pi) e^(-(t+y)^2/2) dif y \
+            & = e^(-t^2/2)/sqrt(2pi) integral_0^infinity exp(-y^2/2 - t y) dif
+              y                                                        \
+            & <=e^(-t^2/2)/sqrt(2pi) underbrace(
+                integral_0^infinity exp(- t y)
+                dif y, 1/t
+              )                                                        \
+            & = 1/(t sqrt(2pi) ) e^(-t^2/2).
+$
+
+This can be used to estimate the probability above, though we won't care about
+it much here.
+
+In this section, we are interested in estimating tail bounds like the results
+above. Let's get started with some elementary results:
+
+#theorem(title: "Markov's inequality")[
+  If $X >= 0$, then:
+  $ PP[X > t] <= (EE[X])/t. $
+] <thr:markov>
+
+#proof[
+  We have:
+  $
+    X = X bold(1)_(X > t) + underbrace(X bold(1)_(X < t), >= 0)
+    => EE[X] >= EE[X bold(1)_(X > t)] >= t PP[X > t].
+  $
+]
+
+#theorem(title: "Chebyshev's inequality")[
+  If $X$ is a random variable with finite variance $sigma^2$, then:
+  $ PP[abs(X - EE[X]) >= t sigma] <= 1/t^2. $
+]
+
+#proof[
+  Apply @thr:markov for $Y = (X - EE[X])^2$.
+]
+
+#example[
+  Toss a coin $N$ times. Find a bound for $PP["at least" (3N)/4 "heads"]$.
+
+  Denote $X$ as the number of heads, then $EE[X] = N/2, VV[X] = N/4$. Then
+  $sigma_X = sqrt(N)/2$ and,
+  $
+    PP[X >= (3N)/4] = 1/2 PP[abs(X-EE[X]) >= N/4] = 1/2 PP[abs(X-EE[X]) >=
+      sqrt(N)/2 sigma_X ] <= 1/2 dot 1/((sqrt(N)/2 )^2) = 2/N.
+  $
+
+  Alternatively, via the CLT, $(X-EE[X])/sigma_X tilde N(0, 1)$ as $N ->
+  infinity$. Pretend that:
+  $
+    PP[Z = (X-EE[X])/sigma_X > t] approx 1/sqrt(2pi) integral_t^infinity e^(-x^2/2)
+    dif x <= 1/(t sqrt(2pi) ) e^(-t^2/2).
+  $
+  then,
+  $ PP[X >= (3N)/4] <= PP[Z > sqrt(N/4)] <= sqrt(2/(pi N)) e^(-N/8). $
+
+  This is a better approximation than the previous one, but it is not exact. The
+  constant factor present in the CLT is at most $o_N (1) = cal(O)(1/sqrt(N))$
+  (in the best case, Berry–Esseen theorem).
+]
+
+So the basic results can't give really good results, so we must use some more
+advanced techniques.
+
+#theorem(title: "Hoeffding inequality for Bernoulli random variables")[
+  Let $X_1, ..., X_N$ be independent symmetric Bernoulli random variables (takes
+  values in ${-1, 1}$). Then,
+  $ PP[(sum_(i = 1)^N X_i)/sqrt(N) >= t] <= e^(-t^2/2), forall t >= 0. $
+  Similarly,
+  $ PP[(sum_(i = 1)^N X_i)/sqrt(N) <= -t] <= e^(-t^2/2), forall t >= 0. $
+  Thus,
+  $ PP[abs((sum_(i = 1)^N X_i)/sqrt(N)) >= t] <= 2e^(-t^2/2), forall t >= 0. $
+]
+
+Applying this to the example above:
+Let $X_i$ be the $i$-th coin toss. Then, $Y_i = 2X_i - 1$ is the random variable
+in the theorem. Then, define $Y = sum_(i = 1)^N Y_i$, then we have:
+$ Y = 2 X - N, $
+and $EE[Y] = 0$, $sigma_Y = sqrt(N)$.
+
+Now, we have:
+$
+  PP[X >= (3N)/4] = PP[Y >= N/2] = PP[1/sqrt(N)sum_(i=1)^n Y_i >= sqrt(N)/2] <=
+  exp(-(sqrt(N)/2)^2) = exp(-N^2/4)
+$
+
+#proof[
+  Define $S = sum_(i =1)^n X_i$, then:
+  $
+    PP[S >=sqrt(N) t] = PP[lambda S >= lambda sqrt(N) t] =
+    PP[exp (lambda S) >= exp(lambda sqrt(N) t)],
+  $
+  for some $lambda > 0$ chosen later.
+
+  Via @thr:markov, we have:
+  $
+    PP[exp (lambda S) >= exp(lambda sqrt(N) t)] <= (EE[exp(lambda S)])/(exp
+    (lambda sqrt(N) t)).
+  $
+  Now, since $S$ is the sum of independent random variables $X_i$, we
+  have:
+  $
+    EE[exp(lambda S)] = product_(i=1)^N EE[exp(lambda X_i)] = EE[exp(
+        lambda
+        X_i
+      )]^N
+  $
+
+  Manually calculating $EE[exp(lambda X_i)]$:
+  $ EE[exp(lambda X_i)] = 1/2 exp(lambda) + 1/2 exp(-lambda) =cosh(lambda). $
+
+  So the upper bound becomes:
+  $ cosh(lambda)^N/(exp(lambda sqrt(N) t)). $
+
+  Now, the idea is to find $lambda$ such that this is minimized. First, bound
+  $ cosh(lambda) <= exp(lambda^2/2), $
+  which gives:
+  $
+    cosh(lambda)^N/(exp(lambda sqrt(N) t))
+    <= exp((N lambda^2)/2 - lambda sqrt(N) t)
+  $
+  Solving the derivative of the exponent equals 0 (we're lazy) gives:
+  $ N lambda - sqrt(N) t = 0 => lambda = t / sqrt(N). $
+  Then, the upper bound becomes:
+  $ exp((N lambda^2)/2 - lambda sqrt(N) t) = exp ((t^2)/2 - t^2) = exp(-t^2/2). $
+]
+
+Note that we did not use the information that $X_i$ is a Bernoulli random
+variable, just that $EE[exp(lambda X_i)] <= exp(lambda^2/2)$. Actually, we have
+a stronger result:
+#theorem(title: "Hoeffding inequality")[
+  Let $X_1, ..., X_N$ be i.i.d. random variables such that
+  $ EE[exp(lambda X_i)] <= exp (c lambda^2). $
+  Then,
+  $ PP[(sum_(i = 1)^N X_i)/sqrt(N) >= t] <= e^(-c t^2), forall t >= 0. $
+  The other two statements are omitted.
+]
+
+$X_i$ satisfying the condition above have a special name: *sub-Gaussian* random
+variables.
+
+#definition(title: "Sub-Gaussian random variables")[
+  A random variable $X$ is sub-Gaussian of parameter $c$
+  if it satisfies
+  $ EE[exp(lambda X)] <= exp (c lambda^2), forall lambda > 0. $
+
+  Equivalently, $X$ is sub-Gaussian if
+  there exists constant $C_1 > 0$ such that:
+  $ PP[abs(X) >= t] <= 2 exp(-C_1 t^2), forall t >= 0. $
+
+  Or equivalently, $X$ is sub-Gaussian if
+  there exists constant $C_2 > 0$ such that:
+  $ norm(X)_p <= C_2 sqrt(p), forall p >= 1, $
+  where $norm(X)_p = EE[abs(X)^p]^(1/p).$
+
+  Or even equivalently, $X$ is sub-Gaussian if
+  there exists constant $C_3 > 0$ such that:
+  $ EE[exp(X^2/C_3^2)] <= 1. $
+]
+
+With sub-Gaussian random variables, we define the sub-Gaussian norm.
+
+#definition(title: "Sub-Gaussian norm")[
+  The sub-Gaussian norm of a random variable $X$ is defined as:
+  $ norm(X) = inf {C_3 > 0: EE[exp(X^2/C_3^2)] <= 1}. $
+]
+
+Here is a generation of sub-Gaussian random variables:
+
+#definition(title: "Orlicz space of random variables")[
+  A function $psi: RR^+ -> RR^+$ is called *Orlicz* if:
+  - $lim_(x -> 0) psi(x) = 0$,
+  - $lim_(x->infinity) psi(x) = infinity$,
+  - and $f$ is convex.
+
+  Given an Orlicz function $psi$, the Orlicz norm of a random variable $X$
+  w.r.t. $psi$ is,
+  $ norm(X)_psi = inf{C: EE[psi(abs(X)/C)] <= 1} $
+
+  The Orlicz space of random variables w.r.t. $psi$ is the set
+  $ L_psi = {"random variable" X: norm(X)_psi < infinity }. $
+]
+
+Orlicz space is a generalization of the familiar $L^p$ space, allowing for
+functions that grows faster than polynomial (e.g. exponential).
+
+#example[
+  Here are some examples of Orlicz functions:
+  - $psi_2 (x) = exp(x^2) - 1$. We call $L_psi_2$ the space of sub-Gaussian
+    random variables.
+  - $psi (x) = x^p$. This generates the good-old $L^p$ space.
+  - $psi_1 (x) = exp(x) - 1$. We call $L_psi_1$ the space of sub-exponential
+    random variables.
+
+  We can see that the squared of a sub-Gaussian random variable is
+  sub-exponential.
+]
+
+Here is one application of what we discussed so far.
+
+#lemma(title: "Johnson-Lindenstrauss lemma")[
+  $forall x_1, x_2, ..., x_N in RR^d$, there exists a linear map $T: RR^d ->
+  RR^n$ such that:
+  - $n <= C log N$ for some universal constant $C > 0$.
+  - $ 0.99 norm(x_i-x_j)_2 <= norm(T(x_i-x_j))_2 <= 1.01 norm(x_i - x_j)_2. $
+]
+
+Here, treat 0.99 and 1.01 as $1 plus.minus epsilon$. To make the proof simpler,
+we won't talk about $epsilon$ explicitly and just take $epsilon = 0.01$.
+
+#proof[
+  Construct a matrix $G in RR^(n times d)$ where entries
+  $G^i_j tilde cal(N)(0, 1)$ are i.i.d. Take $T(x) = 1/sqrt(n) G x$.
+
+  For $z in B_(RR^d)(0, 1)$, we will look at what $G z$ is. $z$ here are vectors
+  in the form $z = (x_i-x_j)/norm(x_i-x_j)_2$, which we will look at later.
+
+  Write explicitly: $z = (z_1, z_2, ..., z_d)$ with $sum_(i=1)^d (z_i)^2 = 1$.
+  Then,
+  $ G z = vec(G^1 z, G^2 z, ..., G^n z) tilde vec(g_1, g_2, ..., g_n), $
+  where $g_i tilde cal(N)(0, 1)$.
+
+  Then,
+  $ norm(G z)_2^2 tilde sum_(i=1)^n (g_i)^2 tilde chi_n^2, $
+  where $chi_n^2$ is the chi-squared distribution with $n$ degrees of freedom.
+
+  The remaining part is to prove:
+  $ PP(abs(sum_i g_i^2 - n) > epsilon n) <= exp(-delta n), $
+  which implies $norm(G z)$ is very close to $sqrt(n)$ most of the time, so $T$
+  satisfies our conditions.
+
+  However, Hoeffding's inequality is not enough here, since it only gives
+  a bound for sub-Gaussian random variables, and $g_i^2$ is not sub-Gaussian,
+  but rather sub-exponential.
+
+  Hence, we need a different result.
+]
+
+#theorem[
+  Let $X_i$ be independent sub-exponential random variables with mean zero.
+  Then,
+  $ PP[abs(sum_i X_i) >= t] <= 2exp(-c min (t^2/sigma^2, t/k)), $
+  where $sigma^2 = sum_i norm(X_i)^2_psi_1, k = max norm(X_i)_psi_1$.
+]
