@@ -2647,6 +2647,119 @@ subsets that sum to $0$. Complexity: $cal(O)(2^n)$ (naive case) to
 $cal(O)(2^(n/2))$. See https://wiki.vnoi.info/algo/basic/meet-in-the-middle.md
 for more details.
 
+== Matrix multiplication
+
+We have: $(A B)^i_j = A^i B_j = sum_k A^i_k B^k_j.$
+
+For simplicity assuming $A$ and $B$ has dimensions $n times n$.
+
+Naive multiplication: $cal(O)(n^3)$.
+
+Strassen's algorithm: $cal(O)(n^(log_2 7))$.
+
+Current theoretical lower-bound $cal(O)(n^(2.37...))$.
+
+#let pow = math.op("pow")
+
+Denote $pow(A, n)$ as the $n$-th power of matrix $A$, i.e. $pow(A, n) = A^n$ if
+we are not using the super-script notation.
+
+#example[
+  Given a graph $G = (V, E)$. A triangle ${u, v, w}$ is a subset of $V$ such
+  that ${u, v}, {v, w}, {w, u} in E$. We want to count tirangles in $G$.
+
+  *Solution*: Let $A$ be the adjacency matrix of $G$. Then, $(pow(A, k))^i_j$ is
+  the number of paths of length $k$ from $i$ to $j$. Applying this,
+  $pow(A, 3)^i_i$ is
+  the number of triangles that contains vertex $i$. Then, our solution is
+  simply:
+  $ Delta = 1/3sum_(i in V) pow(A, 3)^i_i $
+
+  *Question*: generalize this to directed graphs?
+
+  Alternatively, if we are only detecting triangles, we can lazily calculate the
+  diagonal of $pow(A, 3)$, which might make things faster (reduces one matmul
+  op).
+]
+
+#example[
+  Let $G = (V, E)$ be a graph. Call $S$ a dominating set if for every $v in V$,
+  either $v in S$ or $exists w in S: {v, w} in E$.
+  Problem: determine whether there is a domainating set of size at most $2$.
+
+  If ${u, v}$ is a dominating set, then $N(u) union N(v) supset.eq V without {u,
+    v}$. To make this nicer, redefine $N(u)$ to also include $u$, so we want:
+  $ N(u) union N(v) = V $
+  Define the vector $K_u$ as:
+  $ K_u^v = cases(0 "if" v in N(u), 1 "otherwise"), $
+  then we have:
+  $ N(u) union N(v) = V <=> K_u perp K_v <=> K_u^T K_v = 0. $
+
+  Note that now we have a matrix $K = bold(1) - A$, which is symmetric. Then,
+  the equality above is equivalent to:
+  $ K^u K_v = 0. $
+  This is the same as,
+  $ 0 = (K K)^u_v = (pow(K, 2))^u_v. $
+
+  So it suffices to calculate $pow(K, 2)$ and check if there is any zero.
+
+  We return to the general case: finding $k$-domainating sets (dominating sets
+  with size $k$).
+
+  Now, assuming that $S$ is a $2k$-dominating set, then split it into $S_1$ and
+  $S_2$ with $abs(S_1) = abs(S_2) = k$ ($k$ is even). Consider the matrix:
+  $
+    B in RR^(n^k times n) "where" B^I_u = cases(1 "if" u "is not connected to any of" sigma(I), 0 "otherwise"),
+  $
+  where $sigma: [n^k] -> V^k$ converts between indices to vertex groups
+  of size $k$.
+
+  Then, two groups $sigma(I)$ and $sigma(J)$ can't form a $2k$ non-dominating
+  set iff
+  $
+    & exists x in V: x "is not connected to any of" sigma(I) union sigma(J) \
+    & <==> exists x in V: B^I_x B^J_x = 1                                   \
+    & <==> exists x in V: B^I_x (B^T)^x_J = 1                               \
+    & <==> (B B^T)^I_J > 0.
+  $
+
+  Hence, we simply multiply $B B^T$ and find zero entries. Note that since $B$
+  is rectangular, it can be multiplied in much faster time than the usual
+  $cal(O)(n^omega)$ in square matmul.
+]
+
+== Independent set problem and 3-SAT
+
+Given a graph $G = (V, E)$, an independent set is a subset of vertices $S
+subset.eq V$ such that no two vertices in $S$ are connected by an edge in $E$.
+
+The independent set problem is to find the maximum independent set in $G$.
+However, this problem is famously NP-hard, so we cannot solve it in polynomial
+time.
+
+#theorem(title: "IS is NP-hard")[
+  Independent set problem can be reduced to 3-SAT in polynomial time.
+]
+
+#proof[
+  For every clause $C_k$, e.g., $x_i or x_j or overline(x_k)$, construct three
+  vertices $v_k^1, v_k^2, v_k^3$ corresponding to the three literals in $C_k$.
+  Then, connect $v_k^i$ to $v_k^j$ for every $i != j$ and connect $v_k^i$ to
+  $v_l^j$ for every $C_l$ that contains the literal $x_i$ or $overline(x_i)$.
+  Then, we can construct a graph $G$ such that the maximum independent set in
+  $G$ is equal to the number of clauses in the 3-SAT problem. Solving
+  independent set on this graph is equivalent to solving the orignal 3-SAT
+  problem.
+]
+
+However, a closer look at this construction reveals that the number of
+vertices in $G$ is $cal(O)(m)$, where $m$ is the number of clauses in the SAT
+problem. Theoretically speaking, if we want IS to run "faster", we want to
+reduce the number of clauses.
+
+It turns out that there is a way to reduce the number of clauses to just linear
+in the number of literals, i.e. $cal(O)(n)$.
+
 = High-dimensional Probability and Applications
 
 == Concentration of sums of random variables
@@ -2815,17 +2928,81 @@ variables.
 
   Or even equivalently, $X$ is sub-Gaussian if
   there exists constant $C_3 > 0$ such that:
-  $ EE[exp(X^2/C_3^2)] <= 1. $
+  $ EE[exp(X^2/C_3^2)] <= 2. $
 ]
 
-With sub-Gaussian random variables, we define the sub-Gaussian norm.
+#proof[
+  We will prove the equivalence of the four definitions.
+  - (1) implies (2) (MGF implies tail bound). Apply @thr:markov:
+    $
+      PP[abs(X) >= t] = 2 PP[X >= t] & = PP[exp(lambda X) >= exp(lambda t)] \
+                                     & <= EE[exp(lambda X)]/exp(lambda t)   \
+                                     & <= exp(c lambda^2 - lambda t)        \
+                                     & <= exp(- t^2/(4c)).
+    $
+  - (2) implies (3) (Tail bound implies moment bound). We have:
+    $
+      EE[abs(X)^p] & = integral_0^infinity PP[abs(X)^p >= u] dif u       \
+                   & = integral_0^infinity PP[abs(X) >= u^(1/p) ] dif u.
+    $
+    Change of variable: $s = u^(1/p)$:
+    $
+      EE[abs(X)^p ] & = integral_0^infinity PP[abs(X) >= s ] p s^(p-1) dif s \
+                    & <= p integral_0^infinity 2 exp(-C_1 s^2) s^(p-1) dif s \
+                    & = p C_1^(-p/2) Gamma(p/2)                              \
+                    & <= p C_1^(-p/2) (p/2)^(p/2-1).
+    $
+
+    Then,
+    $
+      norm(X)_p <= underbrace(1/sqrt(C_1) root(p, p), "bounded") sqrt(p/2)
+      <= C_2 sqrt(p),
+    $
+    for some $C_2$.
+  - (3) implies (4) (Moment bound implies exponential square moment). We have:
+    $
+      EE[exp(X^2/C_3^2)] - 1 = sum_(p=1)^infinity (1/p!) EE[X^2]^p/C_3^(2p)
+      <= sum_(p=1)^infinity (1/p!) C_2^p p^(p/2) /C_3^(2p)
+      = sum_(p=1)^infinity 1/p! ((C_2 sqrt(p))/C_3^(2))^(p).
+    $
+    Approximate $p! approx (p/e)^p sqrt(2pi p)$ (alternatively, for more rigor,
+    use an upper bound):
+    $
+      EE[exp(X^2/C_3^2)] <= 1 + sum_(p=1)^infinity 1/sqrt(2pi p) ((C_2 e)/(C_3^2
+        sqrt(p)))^p <= sum_(p=0)^infinity ((C_2 e)/(C_3^2
+        ))^p = 1/(1-(C_2e)/C_3^2).
+    $
+    Now, simply pick $C_3$ such that $1/(1-(C_2e)/C_3^2) <= 2$, which implies
+    $ C_3^2 >= 2 C_2 e. $
+  - (4) implies (1) (Exponential square moment implies MGF). Via Cauchy-Schwarz:
+    $
+      EE[exp(lambda X)] & = EE[exp(lambda X - X^2/(2C_3^2)) exp (X^2/(2C_3^2))] \
+                        & <= sqrt(EE[exp(2 lambda X - X^2/C_3^2)]EE[X^2/C_3^2]) \
+                        & <= sqrt(2EE[exp(2 lambda X - X^2/C_3^2)])
+    $
+    Complete the square via the derivative trick (we're lazy):
+    $ 2lambda - (2 X)/C_3^2 = 0 => X = lambda C_3^2. $
+    Then,
+    $
+      2 lambda X - X^2/C_3^2 <= 2 lambda^2 C_3^2 - lambda^2 C_3^2 = lambda^2
+      C_3^2,
+    $
+    and therefore,
+    $ EE[exp(lambda X)] <= sqrt(2 exp(lambda^2 C_3^2)) = exp(c lambda^2) $
+    for some $c$.
+]
+
+Motivated by the third definition of sub-gaussian random variables,
+we define the sub-Gaussian norm.
 
 #definition(title: "Sub-Gaussian norm")[
   The sub-Gaussian norm of a random variable $X$ is defined as:
-  $ norm(X) = inf {C_3 > 0: EE[exp(X^2/C_3^2)] <= 1}. $
+  $ norm(X) = inf {C_3 > 0: EE[exp(X^2/C_3^2)] <= 2}. $
 ]
 
-Here is a generation of sub-Gaussian random variables:
+If we let sub-Gaussian norm as the "main" definition, then we can
+generalize the definition of sub-Gaussian random variables to Orlicz random
+variables.
 
 #definition(title: "Orlicz space of random variables")[
   A function $psi: RR^+ -> RR^+$ is called *Orlicz* if:
@@ -2833,11 +3010,11 @@ Here is a generation of sub-Gaussian random variables:
   - $lim_(x->infinity) psi(x) = infinity$,
   - and $f$ is convex.
 
-  Given an Orlicz function $psi$, the Orlicz norm of a random variable $X$
+  Given an Orlicz function $psi$, the *Orlicz norm* of a random variable $X$
   w.r.t. $psi$ is,
   $ norm(X)_psi = inf{C: EE[psi(abs(X)/C)] <= 1} $
 
-  The Orlicz space of random variables w.r.t. $psi$ is the set
+  The *Orlicz space* of random variables w.r.t. $psi$ is the set
   $ L_psi = {"random variable" X: norm(X)_psi < infinity }. $
 ]
 
@@ -2875,13 +3052,20 @@ we won't talk about $epsilon$ explicitly and just take $epsilon = 0.01$.
   For $z in B_(RR^d)(0, 1)$, we will look at what $G z$ is. $z$ here are vectors
   in the form $z = (x_i-x_j)/norm(x_i-x_j)_2$, which we will look at later.
 
-  Write explicitly: $z = (z_1, z_2, ..., z_d)$ with $sum_(i=1)^d (z_i)^2 = 1$.
+  Write explicitly: $z = (z^1, z^2, ..., z^n)$ with $norm(z)_2^2 = 1$.
   Then,
-  $ G z = vec(G^1 z, G^2 z, ..., G^n z) tilde vec(g_1, g_2, ..., g_n), $
-  where $g_i tilde cal(N)(0, 1)$.
+  $ G z = vec(G^1 z, G^2 z, ..., G^n z) = vec(g^1, g^2, ..., g^n), $
+
+  Here, we define $g^k = G^k z = sum_i G^k_i z^i$. Since every row $G^k$ of $G$
+  is i.i.d., $g^k$ are i.i.d. They are a linear combination of Gaussian, so what
+  remains it to find their mean and variance.
+
+  Clearly, $EE[g^i] = sum_(k=1)^n EE[G^k_i] z^k = 0$, and:
+  $ VV[g^i] = sum_(k=1)^n VV[G^k_i] (z^k)^2 = norm(z) = 1. $
+  so $g^i tilde cal(N)(0, 1)$.
 
   Then,
-  $ norm(G z)_2^2 tilde sum_(i=1)^n (g_i)^2 tilde chi_n^2, $
+  $ norm(G z)_2^2 tilde sum_(i=1)^n (g^i)^2 tilde chi_n^2, $
   where $chi_n^2$ is the chi-squared distribution with $n$ degrees of freedom.
 
   The remaining part is to prove:
@@ -2896,9 +3080,251 @@ we won't talk about $epsilon$ explicitly and just take $epsilon = 0.01$.
   Hence, we need a different result.
 ]
 
-#theorem[
+#theorem(title: "Bernstein inequality")[
   Let $X_i$ be independent sub-exponential random variables with mean zero.
   Then,
-  $ PP[abs(sum_i X_i) >= t] <= 2exp(-c min (t^2/sigma^2, t/k)), $
+  $ PP[abs(sum_i X_i) >= t] <= 2exp(-c min {t^2/sigma^2, t/k}), $
   where $sigma^2 = sum_i norm(X_i)^2_psi_1, k = max norm(X_i)_psi_1$.
+]
+
+// #proof[
+//   We denote $C$ as universal constants.
+//
+//   First, from
+//   $ k = max norm(X_i)_psi_1, $
+//   we will prove that there exists some $k'$ such that:
+// ]
+
+#example[
+  Given a random variable $X$ with samples $X_1, X_2, ..., X_n$. We want to
+  estimate $mu = EE[X]$.
+
+  The trivial way to do so is to take the sample mean:
+  $ hat(mu) = 1/n sum_(i=1)^n X_i. $
+
+  Then, $hat(mu)$ is now a random variable with mean $mu$ and variance:
+  $ VV[hat(mu)] = 1/n^2 sum_(i=1)^n VV[X_i] = sigma^2/n. $
+
+  By Chebychev's inequality, we have:
+  $ PP[abs(hat(mu) - mu) >= sigma t] <= 1/(n t^2). $
+
+  We want to improve the RHS bound to exponential decay.
+
+  Hence, we consider the following mean estimator: we first divides $X_n$ into
+  $m$ groups and take the means of each group: $hat(mu)_1, ..., hat(mu)_m$.
+  Here, WLOG assuming $n = k m$ to make the math nicer. Finally, define:
+  $ hat(mu) = "median"(hat(mu)_1, ..., hat(mu)_m). $
+  Then, this estimator can be "better" than the sample mean estimator above.
+
+  We have:
+  $
+    hat(mu) >= mu + sigma t => "there are at least" k/2 "indices" j "s.t."
+    hat(mu)_j >= mu + t.
+  $
+  Then,
+  $
+    PP[hat(mu) >= mu +sigma t] & <= PP[hat(mu)_j >= mu + t]^(k/2)
+                                 <= (1/(m t^2))^(k/2).
+  $
+
+  Hence,
+  $
+    PP[hat(mu) >= mu + sigma t] <= inf_(n = m k) (1/(m t^2))^(k/2) = inf_(k > 0)
+    (k/(n t^2))^(k/2).
+  $
+
+  Now, we solve for the infimum. Define
+  $
+    f(k) = (k/(n t^2))^(k/2)\
+    => ln f(k) = k/2 ln (k/(n t^2))\
+    => (ln f(k))' = 1/2 ln (k/(n t^2)) + k/2 dot 1/(n t^2) (n t^2)/k = 1/2 (ln
+      (k/(n t^2)) + 1).
+  $
+  This is equal to 0 when
+  $ k = (n t^2)/e, $
+  so substituting this back to $f(k)$ gives,
+  $ f((n t^2)/e) = underbrace((k/(n t^2)), 1/e)^(k/2) = exp(-(n t^2)/(2e)). $
+
+  Hence,
+  $ PP[hat(mu) >= mu + sigma t] <= exp(-(n t^2)/(2e)), $
+  which is the exponential decay (actually faster since $t^2$) we wanted.
+]
+
+== Concentration of sums of independent random matrices
+
+First, we start with some definitions.
+
+#definition(title: "Positive semidefinite ordering")[
+  For symmetric $A, B in RR^(n times n)$, we write:
+  $ A lt.tilde B <=> B - A "is positive semidefinite". $
+]
+
+#definition(title: "Operator norm")[
+  If $A$ is a symmetric matrix, then the operator norm of $A$ is defined as:
+  $ norm(A) = max "eigenvalue" "of" A. $
+]
+
+#definition(title: "Matrix functions")[
+  *Spectral definition*:
+  If $X = sum_i lambda_i u_i u_i^T$, then for any scalar-valued function $f: RR
+  -> RR$, then we can define:
+  $ f(X) = sum_i f(lambda_i) u_i u_i^T. $
+
+  *Power series definition*:
+  If $f(x) = sum a_k (x - x_0)^k$, then for matrix $X$, we can define:
+  $ f(X) = sum a_k (X - x_0 I)^k. $
+  More precisely, if $X = U diag(lambda_1, ..., lambda_n) U^T$, then
+  $f(X) = U diag(f(lambda_1), ..., f(lambda_n)) U^T.$
+]
+
+#example[
+  We can trivially define polynomial functions on matrices. Another interesting
+  function is the matrix exponential function:
+  $ exp(X) = I + sum_(k = 1)^n 1/k! X^k. $
+  Similarly, we can define the matrix logarithm.
+
+  A very useful property of the matrix exponential is that
+  $ tr(exp(X)) <= tr(exp(Y)) <=> X lt.tilde Y. $
+]
+
+Now, we introduce the main theorem of this section.
+
+#theorem(title: "Matrix Bernstein inequality")[
+  Let $X_1, ..., X_N in RR^n$ be independent symmetric matrices such that:
+  - $EE[X_i] = 0$,
+  - $norm(X_i) <= k$ for some constant $k > 0$,
+  - and $sigma^2 = norm(sum_(i=1)^N EE[X_i^2])$.
+
+  Then, for any symmetric matrix $A$, we have:
+  $ PP[norm(sum_(i=1)^N X_i) >= t] <= 2n exp((-t^2\/2)/(sigma^2 + k t\/3)). $
+]
+
+#proof[
+  We can't use the MGF method like in the random variable case, since we are
+  dealing with matrix norms. Instead, let us write:
+  $
+    PP[lambda_1 (S) >= t]
+    = PP[exp (lambda lambda_1 (S)) >= exp (lambda t)]
+    <= EE[exp(lambda lambda_1 (S))]/exp(lambda t) \
+    <= EE[lambda_1 (exp lambda S)] exp(-lambda t)
+    <= EE[tr(exp (lambda S))] exp(-lambda t),
+  $
+  where $lambda_1 (S)$ denotes the maximum eigenvalue of the matrix $S$,
+  $S = sum_(i=1)^N X_i$. Here, $lambda_1 <= tr$ since the matrix
+  exponential always give positive semidefinite matrices, and the trace is the
+  sum of all eigenvalues.
+
+  However, we can't do
+  $ exp (lambda S) = product_(i=1)^N exp (lambda X_i), $
+  since this only holds if $X_i$ all commute, which is not true in general.
+  Alternatively, we use *Lieb's inequality*.
+  #lemma(title: "Lieb's inequality")[
+    The mapping $h(X) = tr (exp (H + log X))$ is concave in ${X in RR^(d times
+      d): X gt.tilde 0}.$
+  ]
+
+  This is a "deep result", so we won't prove it here. Assuming that it is true,
+  then by Jensen's inequality, we have:
+  $
+    EE [h(X)] <= h(EE[X]) & => EE[tr(exp(H + log X))] <= tr(exp (H + log EE[X])) \
+                          & => EE[tr(exp(H + Z))] <= tr(exp(H+log EE[exp Z])).
+  $
+  Using this,
+  $
+    EE[tr(exp(lambda S))] & = EE_(X_1, ..., X_(N-1)) EE_(X_N) [tr exp(
+                                lambda underbrace(sum_(i=1)^(N-1) X_i, H)
+                                + underbrace(lambda X_N, Z)
+                              )]                                                      \
+                          & <= EE_(X_1, ..., X_(N-1)) [tr exp (lambda
+                                sum_(i=1)^(N-1) X_i + log EE_(X_N) [exp lambda X_N])] \
+                          & <= EE_(X_1, ..., X_(N-2)) EE_(X_(N-1)) [tr exp (underbrace(
+                                  lambda
+                                  sum_(i=1)^(N-2) X_i + log EE_(X_N) [exp lambda
+                                    X_N], H
+                                ) + underbrace(lambda X_(N-1), Z))]                   \
+                          & <= EE_(X_1, ..., X_(N-2))[tr exp (lambda
+                                sum_(i=1)^(N-2) X_i + log EE_(X_N) [exp lambda
+                                  X_N] + log EE_(X_(N-1)) [exp lambda X_(N-1)])]      \
+                          & <= ...                                                    \
+                          & <= tr exp (sum_(i=1)^N log EE[exp lambda X_i]).
+  $
+
+  Finally, apply the following lemma:
+  #lemma[
+    If $EE[X] = 0$ and $norm(X) <=
+    k$, then for $lambda in (0, 3/k)$,
+    $ EE[exp(lambda X)] lt.tilde exp (g(lambda) EE[X^2]), $
+    where $ g(lambda) = lambda^2/(2(1-lambda k\/3)). $
+  ]
+
+  #proof[
+    Fix $lambda > 0$,
+    Define $f(x) = (exp(lambda x) - lambda x - 1)/(x^2)$ (with the limit case
+    $f(0) = lambda^2/2$).
+
+    Then, $f$ is increasing, so $f(x) <= f(k), forall x <= k$. By the matrix
+    transfer rule, this implies,
+    $ f(X) lt.tilde f(k) I, forall X: norm(X) <= k. $
+    We have:
+    $ exp(lambda X) = I + lambda X + f(X) X^2 lt.tilde I + lambda X + f(k) X^2. $
+    Finally,
+    $
+      EE[exp(lambda X)] & lt.tilde I + lambda underbrace(EE[X], 0) + f(k)
+                          EE[X^2]                     \
+                        & lt.tilde exp(f(k) EE[X^2]).
+    $
+    Now, what we want is simply $f(k) <= g(lambda)$, or:
+    $ exp(lambda x) <= 1 + lambda x + (lambda^2 x^2)/(2(1-lambda k \/ 3)), $
+    which holds for every $x in [-k, k]$.
+  ]
+
+  The lemma gives,
+  $
+    log EE[exp (lambda X_i)] lt.tilde g(lambda) EE[X_i^2]\
+    => sum_(i=1)^N log EE[exp (lambda X_i)] lt.tilde
+    sum_(i=1)^N g(lambda) EE[X_i^2] = g(lambda) underbrace(
+      sum_(i=1)^n EE[X^2],
+      V
+    ).
+  $
+
+  Then,
+  $
+    EE[tr exp(lambda S)] <= tr exp (g(lambda) V) <= n exp(g(lambda) norm(V)) = n
+    exp(g(lambda) sigma^2),
+  $
+  here we used $tr(exp A) <= n norm(exp A) = n exp norm(A)$.
+
+  All that remains is to apply Markov's inequality:
+  $
+    PP[lambda_1 (S) >= t] <= exp(-lambda t) dot n exp(g(lambda) sigma^2) = n
+    exp(g(lambda)sigma^2 - lambda t).
+  $
+
+  Setting $lambda = t/(sigma^2 + k t\/3)$
+  (solving the derivative exactly makes things extremely messy)
+  gives,
+
+  $
+    g(lambda) = lambda^2/(2(1-lambda k\/3)) = (t^2)/(2(sigma^2 + k t\/3)
+    (sigma^2+k t\/3 - k t\/3)) = t^2/(2 sigma^2 (sigma^2 + k t\/3)),\
+    => g(lambda)sigma^2 - lambda t = t^2/(2(sigma^2 + k t\/3)) - t^2/(sigma^2+k
+    t\/3) = -t^2/(2(sigma^2 + k t\/3)).
+  $
+
+  Finally, we have:
+  $ PP[lambda_1 (S) >= t] <= n exp(-(t^2\/2)/(sigma^2 + k t\/3)). $
+
+  Similarly, for the minimum eigenvalue, we have:
+  $ PP[lambda_n (S) <= -t] <= n exp(-(t^2\/2)/(sigma^2 + k t\/3)). $
+
+  Hence,
+  $ PP[norm(S) >= t] <= 2 n exp(-(t^2\/2)/(sigma^2 + k t\/3)). $
+]
+
+From the tail bound, we can find the expected value of the sum of independent
+random matrices.
+
+#corollary[
+  $ EE[norm(sum_(i=1)^N X_i)] <= C(sigma sqrt(log n) + K log n). $
 ]
